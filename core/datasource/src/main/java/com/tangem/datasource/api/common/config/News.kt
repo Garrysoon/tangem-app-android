@@ -1,4 +1,4 @@
-package com.tangem.datasource.api.common.config
+﻿package com.tangem.datasource.api.common.config
 
 import com.tangem.datasource.BuildConfig
 import com.tangem.datasource.api.common.AuthProvider
@@ -68,7 +68,7 @@ internal class News(
     private companion object {
 
         private const val PROD_BASE_URL = "https://api.tangem.org/"
-        private const val DEV_BASE_URL = "[REDACTED_ENV_URL]"
-        private const val MOCK_BASE_URL = "[REDACTED_ENV_URL]"
+        private const val DEV_BASE_URL = "https://api.tangem.org/"
+        private const val MOCK_BASE_URL = "https://api.tangem.org/"
     }
 }

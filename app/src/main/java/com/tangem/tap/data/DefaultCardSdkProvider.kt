@@ -1,9 +1,9 @@
 package com.tangem.tap.data
 
+import android.util.Log
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import com.tangem.Log
 import com.tangem.TangemSdk
 import com.tangem.common.CardFilter
 import com.tangem.common.authentication.AuthenticationManager
@@ -23,10 +23,11 @@ import com.tangem.datasource.api.common.config.managers.MutableApiConfigsManager
 import com.tangem.datasource.utils.AddHeadersInterceptor
 import com.tangem.datasource.utils.RequestHeader
 import com.tangem.operations.attestation.api.TangemApiServiceSettings
-import com.tangem.sdk.DefaultSessionViewDelegate
-import com.tangem.sdk.extensions.*
+import com.tangem.sdk.extensions.getWordlist
+import com.tangem.sdk.extensions.initAuthenticationManager
+import com.tangem.sdk.extensions.initKeystoreManager
+import com.tangem.sdk.extensions.unsubscribe
 import com.tangem.sdk.nfc.AndroidNfcAvailabilityProvider
-import com.tangem.sdk.nfc.NfcManager
 import com.tangem.sdk.storage.create
 import com.tangem.tap.foregroundActivityObserver
 import com.tangem.utils.Provider
@@ -36,11 +37,6 @@ import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Implementation of CardSDK instance provider
- *
-[REDACTED_AUTHOR]
- */
 @Suppress("LongParameterList")
 @Singleton
 internal class DefaultCardSdkProvider @Inject constructor(
@@ -52,7 +48,6 @@ internal class DefaultCardSdkProvider @Inject constructor(
 ) : CardSdkProvider, CardSdkOwner {
 
     private val observer = Observer()
-
     private var holder: Holder? = null
 
     override val sdk: TangemSdk
@@ -60,7 +55,6 @@ internal class DefaultCardSdkProvider @Inject constructor(
 
     init {
         val mutableManager = apiConfigsManager as? MutableApiConfigsManager
-
         mutableManager?.addListener(
             object : MutableApiConfigsManager.ApiConfigEnvChangeListener(id = ApiConfig.ID.TangemTech) {
                 override fun onChange(environmentConfig: ApiEnvironmentConfig) {
@@ -68,7 +62,6 @@ internal class DefaultCardSdkProvider @Inject constructor(
                 }
             },
         )
-
         val apiEnvironment = Provider {
             apiConfigsManager.getEnvironmentConfig(ApiConfig.ID.TangemTech).environment
         }
@@ -88,76 +81,42 @@ internal class DefaultCardSdkProvider @Inject constructor(
                     params = errorParams,
                 ),
             )
-            Log.info { message }
+            Log.i(TAG, message)
             return@runBlocking
         }
-
-        if (holder != null) {
-            unsubscribeAndCleanup()
-        }
-
+        if (holder != null) unsubscribeAndCleanup()
         initialize(activity)
-
         activity.lifecycle.addObserver(observer)
-
-        Log.info { "Tangem SDK owner registered" }
+        Log.i(TAG, "Tangem SDK owner registered with SecurityOS")
     }
 
     private fun tryToRegisterWithForegroundActivity(): TangemSdk = runBlocking(dispatchers.mainImmediate) {
         val warning = "Tangem SDK holder is null, trying to recreate it with foreground activity"
-        analyticsExceptionHandler.sendException(
-            ExceptionAnalyticsEvent(
-                exception = IllegalStateException(warning),
-                params = errorParams,
-            ),
-        )
-        Log.warning { warning }
-
+        Log.w(TAG, warning)
         val activity = foregroundActivityObserver.foregroundActivity
-
-        if (activity == null) {
-            val error = "Tangem SDK holder is null and foreground activity is null"
-            analyticsExceptionHandler.sendException(
-                ExceptionAnalyticsEvent(
-                    exception = IllegalStateException(error),
-                    params = errorParams,
-                ),
-            )
-            Log.error { error }
-            error(error)
-        }
-
+            ?: error("Tangem SDK holder is null and foreground activity is null")
         register(activity)
-
-        val sdk = holder?.sdk
-
-        if (sdk == null) {
-            val error = "Tangem SDK is null after re-registering with foreground activity"
-            analyticsExceptionHandler.sendException(
-                ExceptionAnalyticsEvent(
-                    exception = IllegalStateException(error),
-                    params = errorParams,
-                ),
-            )
-            Log.error { error }
-            error(error)
-        }
-
-        return@runBlocking sdk
+        return@runBlocking holder?.sdk ?: error("Tangem SDK is null after re-registering")
     }
 
     private fun initialize(activity: FragmentActivity) {
         val secureStorage = SecureStorage.create(activity)
-        val nfcManager = TangemSdk.initNfcManager(activity)
         val authenticationManager = TangemSdk.initAuthenticationManager(activity)
         val keystoreManager = TangemSdk.initKeystoreManager(authenticationManager, secureStorage)
 
-        val viewDelegate = DefaultSessionViewDelegate(nfcManager, activity)
-        viewDelegate.sdkConfig = config
+        val securityOSNfcManager = SecurityOSNfcManager().apply {
+            setCurrentActivity(activity)
+            activity.lifecycle.addObserver(this)
+        }
+
+        // Explicitly enable reader mode — lifecycle observer may miss onStart if Activity already started
+        securityOSNfcManager.enableReaderModeIfNfcEnabled()
+
+        val viewDelegate = SecurityOSSessionViewDelegate()
 
         val androidNfcAvailabilityProvider = AndroidNfcAvailabilityProvider(activity)
         val sdk = TangemSdk(
-            reader = nfcManager.reader,
+            reader = securityOSNfcManager.reader,
             viewDelegate = viewDelegate,
             nfcAvailabilityProvider = androidNfcAvailabilityProvider,
             secureStorage = secureStorage,
@@ -172,39 +131,32 @@ internal class DefaultCardSdkProvider @Inject constructor(
 
         holder = Holder(
             activity = activity,
-            nfcManager = nfcManager,
+            securityOSNfcManager = securityOSNfcManager,
             authenticationManager = authenticationManager,
             sdk = sdk,
         )
 
-        Log.info { "Tangem SDK initialized" }
+        Log.i(TAG, "Tangem SDK initialized with SecurityOS NFC reader")
     }
 
     private fun unsubscribeAndCleanup() {
         val currentHolder = holder
-
         if (currentHolder == null) {
-            Log.info { "Tangem SDK already unsubscribed and cleaned up" }
+            Log.i(TAG, "Tangem SDK already unsubscribed and cleaned up")
             return
         }
-
         with(currentHolder) {
-            nfcManager.unsubscribe(activity)
+            securityOSNfcManager.onStop(activity)
             authenticationManager.unsubscribe(activity)
-
             activity.lifecycle.removeObserver(observer)
         }
-
         holder = null
-
-        Log.info { "Tangem SDK unsubscribed and cleaned up" }
+        Log.i(TAG, "Tangem SDK unsubscribed and cleaned up")
     }
 
     inner class Observer : DefaultLifecycleObserver {
-
         override fun onDestroy(owner: LifecycleOwner) {
-            Log.info { "Tangem SDK owner destroyed" }
-
+            Log.i(TAG, "Tangem SDK owner destroyed")
             unsubscribeAndCleanup()
         }
     }
@@ -212,11 +164,12 @@ internal class DefaultCardSdkProvider @Inject constructor(
     data class Holder(
         val activity: FragmentActivity,
         val sdk: TangemSdk,
-        val nfcManager: NfcManager,
+        val securityOSNfcManager: SecurityOSNfcManager,
         val authenticationManager: AuthenticationManager,
     )
 
     private companion object {
+        private const val TAG = "DefaultCardSdkProvider"
 
         val config = Config(
             linkedTerminal = true,

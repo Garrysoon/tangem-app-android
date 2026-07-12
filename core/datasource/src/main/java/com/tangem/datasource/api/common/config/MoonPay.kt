@@ -1,4 +1,4 @@
-package com.tangem.datasource.api.common.config
+﻿package com.tangem.datasource.api.common.config
 
 import com.tangem.datasource.BuildConfig
 
@@ -37,7 +37,7 @@ internal class MoonPay : ApiConfig() {
     private fun createMockEnvironment(): ApiEnvironmentConfig {
         return ApiEnvironmentConfig(
             environment = ApiEnvironment.MOCK,
-            baseUrl = "[REDACTED_ENV_URL]",
+            baseUrl = "https://api.tangem.org/",
         )
     }
 }

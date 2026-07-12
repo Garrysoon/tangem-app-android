@@ -59,6 +59,6 @@ internal class GaslessTxService(
 
     private companion object {
         private const val PROD_BASE_URL = "https://gasless.tangem.org/"
-        private const val DEV_BASE_URL = "[REDACTED_ENV_URL]"
+        private const val DEV_BASE_URL = PROD_BASE_URL
     }
 }

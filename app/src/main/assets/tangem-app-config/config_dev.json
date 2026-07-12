@@ -1,221 +1,224 @@
 {
-	"amplitudeApiKey": "PLACEHOLDER",
-	"amplitudeApiKeyDev": "PLACEHOLDER",
+	"amplitudeApiKey": "",
+	"amplitudeApiKeyDev": "",
 	"appsFlyer": {
-		"appsFlyerDevKey": "PLACEHOLDER",
-		"appsFlyerAppID": "PLACEHOLDER"
+		"appsFlyerDevKey": "",
+		"appsFlyerAppID": ""
 	},
 	"blockchairApiKeys": [
-		"PLACEHOLDER"
+		""
 	],
-	"blockchairAuthorizationToken": "PLACEHOLDER",
+	"blockchairAuthorizationToken": "",
 	"blockcypherTokens": [
-		"PLACEHOLDER"
+		""
 	],
-	"bscQuiknodeApiKey": "PLACEHOLDER",
-	"bscQuiknodeSubdomain": "PLACEHOLDER",
+	"bscQuiknodeApiKey": "",
+	"bscQuiknodeSubdomain": "",
 	"getBlockAccessTokens": {
 		"avalanche": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"ethereum": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": "https://eth.llamarpc.com"
 		},
 		"ethereumClassic":  {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"fantom": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"rsk":  {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"bsc": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"polygon":  {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"xdai": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"cronos":  {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"solana":  {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"ton":  {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"tron":  {
-			"rest": "PLACEHOLDER"
+			"rest": ""
 		},
 		"cosmos-hub": {
-			"rest": "PLACEHOLDER"
+			"rest": ""
 		},
 		"near": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"xrp": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"cardano": {
-			"rosetta": "PLACEHOLDER"
+			"rosetta": ""
 		},
 		"dogecoin": {
-			"blockBookRest": "PLACEHOLDER",
-			"jsonRpc": "PLACEHOLDER"
+			"blockBookRest": "",
+			"jsonRpc": ""
 		},
 		"litecoin": {
-			"blockBookRest": "PLACEHOLDER",
-			"jsonRpc": "PLACEHOLDER"
+			"blockBookRest": "",
+			"jsonRpc": ""
 		},
 		"dash": {
-			"blockBookRest": "PLACEHOLDER",
-			"jsonRpc": "PLACEHOLDER"
+			"blockBookRest": "",
+			"jsonRpc": ""
 		},
 		"bitcoin": {
-			"blockBookRest": "PLACEHOLDER",
-			"jsonRpc": "PLACEHOLDER"
+			"blockBookRest": "https://blockstream.info/api/",
+			"jsonRpc": ""
+		},
+		"ethereum": {
+			"jsonRpc": "https://eth.llamarpc.com"
 		},
 		"aptos": {
-			"rest": "PLACEHOLDER"
+			"rest": ""
 		},
 		"algorand": {
-			"rest": "PLACEHOLDER"
+			"rest": ""
 		},
 		"polygon-zkevm": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"zksync": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"base": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"blast": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"filecoin": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"arbitrum-one": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"bitcoinCash": {
-			"blockBookRest": "PLACEHOLDER",
-			"jsonRpc": "PLACEHOLDER"
+			"blockBookRest": "",
+			"jsonRpc": ""
 		},
 		"kusama": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"moonbeam": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"optimism": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"polkadot": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"shibarium": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"sui": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"telos": {
-			"jsonRpc": "PLACEHOLDER"
+			"jsonRpc": ""
 		},
 		"tezos": {
-			"rest": "PLACEHOLDER"
+			"rest": ""
 		},
         "monad": {
-            "rest": "PLACEHOLDER"
+            "rest": ""
 		},
         "stellar": {
-            "rest": "PLACEHOLDER"
+            "rest": ""
 		},
         "berachain": {
-            "rest": "PLACEHOLDER"
+            "rest": ""
 		}
 	},
-	"kaspaSecondaryApiUrl": "PLACEHOLDER",
-	"infuraProjectId": "PLACEHOLDER",
-	"mercuryoSecret": "PLACEHOLDER",
-	"mercuryoWidgetId": "PLACEHOLDER",
-	"moonPayApiKey": "PLACEHOLDER",
-	"moonPayApiSecretKey": "PLACEHOLDER",
-	"nowNodesApiKey": "PLACEHOLDER",
+	"kaspaSecondaryApiUrl": "",
+	"infuraProjectId": "",
+	"mercuryoSecret": "",
+	"mercuryoWidgetId": "",
+	"moonPayApiKey": "",
+	"moonPayApiSecretKey": "",
+	"nowNodesApiKey": "",
 	"tonCenterApiKey": {
-		"mainnet": "PLACEHOLDER",
-		"testnet": "PLACEHOLDER"
+		"mainnet": "",
+		"testnet": ""
 	},
-	"quiknodeApiKey": "PLACEHOLDER",
-	"quiknodeSubdomain": "PLACEHOLDER",
-	"quiknodePlasmaApiKey": "PLACEHOLDER",
-	"quiknodePlasmaSubdomain": "PLACEHOLDER",
-	"quiknodeMonadApiKey": "PLACEHOLDER",
-	"quiknodeMonadSubdomain": "PLACEHOLDER",
-	"quiknodeStellarApiKey": "PLACEHOLDER",
-	"quiknodeStellarSubdomain": "PLACEHOLDER",
-	"quiknodeBerachainApiKey": "PLACEHOLDER",
-	"quiknodeBerachainSubdomain": "PLACEHOLDER",
-	"quiknodeXRPLApiKey": "PLACEHOLDER",
-	"quiknodeXRPLSubdomain": "PLACEHOLDER",
-	"tronGridApiKey": "PLACEHOLDER",
-	"walletConnectProjectId": "PLACEHOLDER",
-	"chiaFireAcademyApiKey": "PLACEHOLDER",
-	"chiaTangemApiKey": "PLACEHOLDER",
+	"quiknodeApiKey": "",
+	"quiknodeSubdomain": "",
+	"quiknodePlasmaApiKey": "",
+	"quiknodePlasmaSubdomain": "",
+	"quiknodeMonadApiKey": "",
+	"quiknodeMonadSubdomain": "",
+	"quiknodeStellarApiKey": "",
+	"quiknodeStellarSubdomain": "",
+	"quiknodeBerachainApiKey": "",
+	"quiknodeBerachainSubdomain": "",
+	"quiknodeXRPLApiKey": "",
+	"quiknodeXRPLSubdomain": "",
+	"tronGridApiKey": "",
+	"walletConnectProjectId": "",
+	"chiaFireAcademyApiKey": "",
+	"chiaTangemApiKey": "",
 	"express": {
-		"apiKey": "PLACEHOLDER",
-		"signVerifierPublicKey": "PLACEHOLDER"
+		"apiKey": "",
+		"signVerifierPublicKey": ""
 	},
 	"devExpress": {
-		"apiKey": "PLACEHOLDER",
-		"signVerifierPublicKey": "PLACEHOLDER"
+		"apiKey": "",
+		"signVerifierPublicKey": ""
 	},
-	"hederaArkhiaKey": "PLACEHOLDER",
-	"polygonScanApiKey": "PLACEHOLDER",
-	"koinosProApiKey": "PLACEHOLDER",
-	"stakeKitApiKey": "PLACEHOLDER",
-	"bittensorDwellirKey": "PLACEHOLDER",
-	"dwellirApiKey": "PLACEHOLDER",
-	"bittensorOnfinalityKey": "PLACEHOLDER",
-	"alephiumTangemApiKey": "PLACEHOLDER",
-	"moralisApiKey": "PLACEHOLDER",
-	"blockaidApiKey": "PLACEHOLDER",
-	"tangemApiKey": "PLACEHOLDER",
-	"tangemApiKeyDev": "PLACEHOLDER",
-	"tangemApiKeyStage": "PLACEHOLDER",
-	"etherscanApiKey": "PLACEHOLDER",
-	"yieldModuleApiKey": "PLACEHOLDER",
-	"yieldModuleApiKeyDev": "PLACEHOLDER",
-	"blinkApiKey": "PLACEHOLDER",
-	"tatumApiKey": "PLACEHOLDER",
-	"bffStaticToken": "PLACEHOLDER",
-	"bffStaticTokenDev": "PLACEHOLDER",
+	"hederaArkhiaKey": "",
+	"polygonScanApiKey": "",
+	"koinosProApiKey": "",
+	"stakeKitApiKey": "",
+	"bittensorDwellirKey": "",
+	"dwellirApiKey": "",
+	"bittensorOnfinalityKey": "",
+	"alephiumTangemApiKey": "",
+	"moralisApiKey": "",
+	"blockaidApiKey": "",
+	"tangemApiKey": "",
+	"tangemApiKeyDev": "",
+	"tangemApiKeyStage": "",
+	"etherscanApiKey": "",
+	"yieldModuleApiKey": "",
+	"yieldModuleApiKeyDev": "",
+	"blinkApiKey": "",
+	"tatumApiKey": "",
+	"bffStaticToken": "",
+	"bffStaticTokenDev": "",
 	"p2pApiKey": {
-        "mainnet": "PLACEHOLDER",
-        "hoodi": "PLACEHOLDER"
+        "mainnet": "",
+        "hoodi": ""
     },
 	"customerIO": {
-		"iosApiKey": "PLACEHOLDER",
-		"androidApiKey": "PLACEHOLDER"
+		"iosApiKey": "",
+		"androidApiKey": ""
     },
 	"surveySparrow": {
-        "clientID": "PLACEHOLDER",
-        "clientSecret": "PLACEHOLDER",
-        "apiKey": "PLACEHOLDER",
+        "clientID": "",
+        "clientSecret": "",
+        "apiKey": "",
 		"swapRating": {
-			"surveyId": "PLACEHOLDER",
-			"ratingQuestionId": "PLACEHOLDER",
-			"feedbackQuestionId": "PLACEHOLDER"
+			"surveyId": "",
+			"ratingQuestionId": "",
+			"feedbackQuestionId": ""
 		}
     },
-	"gaslessTxApiKey": "PLACEHOLDER",
-	"gaslessTxApiKeyDev": "PLACEHOLDER",
-	"alchemyApiKey": "PLACEHOLDER",
-	"authServiceKey": "PLACEHOLDER"
+	"gaslessTxApiKey": "",
+	"gaslessTxApiKeyDev": "",
+	"alchemyApiKey": "",
+	"authServiceKey": ""
 }

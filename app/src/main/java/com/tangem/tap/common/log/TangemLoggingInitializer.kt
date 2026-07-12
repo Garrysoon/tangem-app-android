@@ -8,7 +8,6 @@ import com.tangem.blockchain.network.BlockchainSdkRetrofitBuilder
 import com.tangem.datasource.api.common.createNetworkLoggingInterceptor
 import com.tangem.datasource.local.logs.AppLogsStore
 import com.tangem.datasource.utils.NetworkLogsSaveInterceptor
-import com.tangem.datasource.utils.WireMockRedirectInterceptor
 import com.tangem.domain.common.LogConfig
 import com.tangem.operations.attestation.api.TangemApiServiceSettings
 import com.tangem.utils.logging.TangemLogger
@@ -59,18 +58,12 @@ class TangemLoggingInitializer(
         if (!LogConfig.network.isBlockchainSdkNetworkLogEnabled) return
 
         BlockchainSdkRetrofitBuilder.interceptors = buildList {
-            if (BuildConfig.MOCK_DATA_SOURCE) {
-                add(WireMockRedirectInterceptor())
-            }
             add(createNetworkLoggingInterceptor())
             add(ChuckerInterceptor(application))
         }
 
         TangemApiServiceSettings.addInterceptors(
             *buildList {
-                if (BuildConfig.MOCK_DATA_SOURCE) {
-                    add(WireMockRedirectInterceptor())
-                }
                 add(createNetworkLoggingInterceptor())
                 add(ChuckerInterceptor(application))
                 add(NetworkLogsSaveInterceptor(appLogsStore))
