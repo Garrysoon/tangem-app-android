@@ -43,6 +43,9 @@ class SecurityOSCardReader : CardReader {
 
     var listener: ReadingActiveListener? = null
 
+    // SCP03 Secure Channel
+    val secureChannel = SecurityOSSecureChannel()
+
     private val readerMutex = Mutex()
     private var nfcTag: NfcTag? = null
         set(value) {
@@ -237,8 +240,29 @@ class SecurityOSCardReader : CardReader {
         }
 
         val rawResponse: ByteArray? = try {
-            val response = nfcTag?.isoDep?.transceive(dataToSend)
-            Log.d(TAG, "response: ${response?.joinToString("") { String.format("%02X", it) }}")
+            // SCP03: wrap command if channel is initialized
+            val commandToSend = if (secureChannel.isInitialized() &&
+                dataToSend[0] != 0x80.toByte() && // Don't wrap INIT_SC/PROCESS_SC themselves
+                dataToSend.size > 1 && dataToSend[1] != SecurityOSSecureChannel.INS_INIT_SC &&
+                dataToSend[1] != SecurityOSSecureChannel.INS_PROCESS_SC
+            ) {
+                secureChannel.wrapCommand(dataToSend)
+            } else {
+                dataToSend
+            }
+
+            val response = nfcTag?.isoDep?.transceive(commandToSend)
+
+            // SCP03: unwrap response if channel is initialized
+            val processedResponse = if (secureChannel.isInitialized() && response != null &&
+                commandToSend[0] == 0x80.toByte() && commandToSend[1] == SecurityOSSecureChannel.INS_PROCESS_SC
+            ) {
+                secureChannel.unwrapResponse(response)
+            } else {
+                response
+            }
+
+            Log.d(TAG, "response: ${processedResponse?.joinToString("") { String.format("%02X", it) }}")
             // Send post-command ONLY after GET_XPUB
             if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
                 val postCmd = SecurityOSCommandMapper.pendingPostCommand
@@ -253,7 +277,7 @@ class SecurityOSCardReader : CardReader {
                     }
                 }
             }
-            response
+            processedResponse
         } catch (exception: TagLostException) {
             Log.e(TAG, "TagLostException")
             callback(CompletionResult.Failure(TangemSdkError.TagLost()))
@@ -278,6 +302,13 @@ class SecurityOSCardReader : CardReader {
     // Rate limiting: minimum 5 seconds between PIN attempts
     private var lastPinAttemptTime: Long = 0
     private val PIN_MIN_INTERVAL_MS = 5000L
+    private val PIN_MAX_TRIES = 3
+
+    // Remaining PIN attempts tracking (0 = blocked, 1..3 = attempts left)
+    var lastPinRemainingAttempts: Int = PIN_MAX_TRIES
+        private set
+    var isPinBlocked: Boolean = false
+        private set
 
     private fun verifyPin(): Boolean {
         try {
@@ -301,22 +332,26 @@ class SecurityOSCardReader : CardReader {
             when (sw) {
                 0x9000 -> {
                     Log.d(TAG, "verify PIN: SW=9000 OK")
+                    lastPinRemainingAttempts = PIN_MAX_TRIES
+                    isPinBlocked = false
                     return true
                 }
-                0x6300 -> {
-                    // Wrong PIN — SW=63C0 where C0 = remaining attempts
-                    val remaining = if (response != null && response.size >= 2) {
-                        response[response.size - 1].toInt() and 0xFF
-                    } else -1
-                    Log.e(TAG, "verify PIN: WRONG PIN! Remaining attempts: $remaining")
+                in 0x6300..0x630F -> {
+                    // Wrong PIN — SW=63Cx where low nibble = remaining attempts
+                    val remaining = sw and 0x0F
+                    lastPinRemainingAttempts = remaining
+                    isPinBlocked = false
+                    Log.e(TAG, "verify PIN: WRONG PIN! Remaining attempts: $remaining/$PIN_MAX_TRIES")
                     if (remaining == 1) {
                         Log.e(TAG, "WARNING: Only 1 attempt left! Card will be LOCKED on next failure!")
                     }
                     return false
                 }
-                0x6983 -> {
+                0x9C0C -> {
                     // PIN blocked
-                    Log.e(TAG, "verify PIN: CARD LOCKED (SW=6983) — PUK required to reset!")
+                    lastPinRemainingAttempts = 0
+                    isPinBlocked = true
+                    Log.e(TAG, "verify PIN: CARD BLOCKED (SW=9C0C) — PUK required to reset!")
                     return false
                 }
                 else -> {
@@ -337,6 +372,43 @@ class SecurityOSCardReader : CardReader {
 
     override fun readSlixTag(callback: CompletionCallback<ResponseApdu>) {
         callback(CompletionResult.Failure(TangemSdkError.ErrorProcessingCommand()))
+    }
+
+    /**
+     * Initialize SCP03 secure channel.
+     * Sends INIT_SECURE_CHANNEL to card, receives card's ephemeral pubkey,
+     * computes ECDH shared secret and derives session keys.
+     */
+    fun initSecureChannel(): Boolean {
+        try {
+            if (secureChannel.isInitialized()) {
+                Log.d(TAG, "SCP03 already initialized")
+                return true
+            }
+
+            Log.d(TAG, "Initializing SCP03 secure channel...")
+            val initCmd = secureChannel.buildInitScCommand()
+            val response = nfcTag?.isoDep?.transceive(initCmd)
+
+            if (response == null || response.size < 2) {
+                Log.e(TAG, "INIT_SC: no response")
+                return false
+            }
+
+            val sw = (response[response.size - 2].toInt() and 0xFF) shl 8 or
+                (response[response.size - 1].toInt() and 0xFF)
+
+            if (sw != 0x9000) {
+                Log.e(TAG, "INIT_SC failed: SW=${String.format("%04X", sw)}")
+                return false
+            }
+
+            val data = response.copyOfRange(0, response.size - 2)
+            return secureChannel.processInitScResponse(data)
+        } catch (e: Exception) {
+            Log.e(TAG, "initSecureChannel failed: ${e.message}")
+            return false
+        }
     }
 
     override fun forceEnableReaderMode() {
