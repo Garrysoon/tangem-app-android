@@ -45,6 +45,16 @@ object SecurityOSCommandMapper {
     private const val SOS_INS_SCHNORR_SIGN: Byte = 0x7B
     private const val SOS_INS_GET_AUTHENTIKEY: Byte = 0x73
     private const val SOS_INS_GET_STATUS: Byte = 0x3C
+    // MuSig2 (multisig)
+    private const val SOS_INS_MUSIG2_NONCE: Byte = 0x7E
+    private const val SOS_INS_MUSIG2_PARTIAL_SIGN: Byte = 0x7F
+    private const val SOS_INS_MUSIG2_AGGREGATE_PUB: Byte = 0xA0.toByte()
+    // Taproot tweak
+    private const val SOS_INS_TAPROOT_TWEAK: Byte = 0x7C
+    // BIP352 Silent Payments
+    private const val SOS_INS_SP_IMPORT_KEYS: Byte = 0x7D
+    private const val SOS_INS_SP_TWEAK: Byte = 0xA4.toByte()
+    private const val SOS_INS_SP_SIGN: Byte = 0xA5.toByte()
 
     // ===== Shared TLV tags =====
     private const val TAG_CARD_ID: Byte = 0x01
@@ -68,6 +78,13 @@ object SecurityOSCommandMapper {
         GET_AUTHENTIKEY,
         IMPORT_SEED,
         WALLETS_LIST,
+        MUSIG2_NONCE,
+        MUSIG2_PARTIAL_SIGN,
+        MUSIG2_AGGREGATE_PUB,
+        TAPROOT_TWEAK,
+        SP_IMPORT_KEYS,
+        SP_TWEAK,
+        SP_SIGN,
         UNKNOWN
     }
 

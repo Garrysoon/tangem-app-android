@@ -211,8 +211,22 @@ class SecurityOSCardReader : CardReader {
             }
         } else {
             dataToSend = aidReplaced
-            commandType = SecurityOSCommandMapper.CommandType.UNKNOWN
-            val ins = if (aidReplaced.size > 1) String.format("%02X", aidReplaced[1]) else "??"
+            // Detect SecurityOS CLA=0xB0 commands for command type tracking
+            val insByte = aidReplaced[1]
+            commandType = when (insByte) {
+                0x7E.toByte() -> SecurityOSCommandMapper.CommandType.MUSIG2_NONCE
+                0x7F.toByte() -> SecurityOSCommandMapper.CommandType.MUSIG2_PARTIAL_SIGN
+                0xA0.toByte() -> SecurityOSCommandMapper.CommandType.MUSIG2_AGGREGATE_PUB
+                0x7C.toByte() -> SecurityOSCommandMapper.CommandType.TAPROOT_TWEAK
+                0x7D.toByte() -> SecurityOSCommandMapper.CommandType.SP_IMPORT_KEYS
+                0xA4.toByte() -> SecurityOSCommandMapper.CommandType.SP_TWEAK
+                0xA5.toByte() -> SecurityOSCommandMapper.CommandType.SP_SIGN
+                else -> SecurityOSCommandMapper.CommandType.UNKNOWN
+            }
+            if (commandType != SecurityOSCommandMapper.CommandType.UNKNOWN) {
+                SecurityOSCommandMapper.lastCommandType = commandType
+            }
+            val ins = String.format("%02X", insByte)
             Log.d(TAG, "passthrough CLA=${String.format("%02X", aidReplaced[0])} INS=$ins: ${dataToSend.joinToString("") { String.format("%02X", it) }}")
         }
 
