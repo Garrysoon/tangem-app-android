@@ -275,17 +275,55 @@ class SecurityOSCardReader : CardReader {
         }
     }
 
+    // Rate limiting: minimum 5 seconds between PIN attempts
+    private var lastPinAttemptTime: Long = 0
+    private val PIN_MIN_INTERVAL_MS = 5000L
+
     private fun verifyPin(): Boolean {
         try {
+            // Rate limiting — prevent rapid brute-force
+            val now = System.currentTimeMillis()
+            val elapsed = now - lastPinAttemptTime
+            if (elapsed < PIN_MIN_INTERVAL_MS) {
+                val waitMs = PIN_MIN_INTERVAL_MS - elapsed
+                Log.w(TAG, "PIN rate limit: waiting ${waitMs}ms before next attempt")
+                Thread.sleep(waitMs)
+            }
+            lastPinAttemptTime = System.currentTimeMillis()
+
             val pin = byteArrayOf(0x31, 0x32, 0x33, 0x34) // "1234" (default after firmware reinstall)
             val verifyApdu = byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, pin.size.toByte()) + pin
-            Log.d(TAG, "verify PIN: ${verifyApdu.joinToString("") { String.format("%02X", it) }}")
             val response = nfcTag?.isoDep?.transceive(verifyApdu)
             val sw = if (response != null && response.size >= 2) {
                 (response[response.size - 2].toInt() and 0xFF) shl 8 or (response[response.size - 1].toInt() and 0xFF)
             } else 0
-            Log.d(TAG, "verify PIN response: SW=${String.format("%04X", sw)}")
-            return sw == 0x9000
+
+            when (sw) {
+                0x9000 -> {
+                    Log.d(TAG, "verify PIN: SW=9000 OK")
+                    return true
+                }
+                0x6300 -> {
+                    // Wrong PIN — SW=63C0 where C0 = remaining attempts
+                    val remaining = if (response != null && response.size >= 2) {
+                        response[response.size - 1].toInt() and 0xFF
+                    } else -1
+                    Log.e(TAG, "verify PIN: WRONG PIN! Remaining attempts: $remaining")
+                    if (remaining == 1) {
+                        Log.e(TAG, "WARNING: Only 1 attempt left! Card will be LOCKED on next failure!")
+                    }
+                    return false
+                }
+                0x6983 -> {
+                    // PIN blocked
+                    Log.e(TAG, "verify PIN: CARD LOCKED (SW=6983) — PUK required to reset!")
+                    return false
+                }
+                else -> {
+                    Log.e(TAG, "verify PIN: unexpected SW=${String.format("%04X", sw)}")
+                    return false
+                }
+            }
         } catch (e: TagLostException) {
             Log.e(TAG, "TagLost during PIN verify")
             nfcTag = null
