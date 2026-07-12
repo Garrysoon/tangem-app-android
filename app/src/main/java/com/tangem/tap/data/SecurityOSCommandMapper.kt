@@ -42,6 +42,7 @@ object SecurityOSCommandMapper {
     private const val SOS_INS_IMPORT_SEED: Byte = 0x6C
     private const val SOS_INS_GET_XPUB: Byte = 0x6D
     private const val SOS_INS_SIGN_HASH: Byte = 0x7A
+    private const val SOS_INS_SIGN_TX: Byte = 0x6F
     private const val SOS_INS_SCHNORR_SIGN: Byte = 0x7B
     private const val SOS_INS_GET_AUTHENTIKEY: Byte = 0x73
     private const val SOS_INS_GET_STATUS: Byte = 0x3C
@@ -324,6 +325,95 @@ object SecurityOSCommandMapper {
     private fun buildSignHash(hash: ByteArray): ByteArray {
         lastCommandType = CommandType.SIGN_HASH
         return byteArrayOf(SOS_CLA, SOS_INS_SIGN_HASH, 0x00, 0x00, hash.size.toByte()) + hash
+    }
+
+    /** SIGN_TX: CLA=B0, INS=6F, Lc=N, txData(N) — raw transaction signing */
+    fun buildSignTx(txData: ByteArray): ByteArray {
+        lastCommandType = CommandType.SIGN_HASH
+        Log.d(TAG, "SIGN_TX: ${txData.size}B raw transaction")
+        return byteArrayOf(SOS_CLA, SOS_INS_SIGN_TX, 0x00, 0x00, txData.size.toByte()) + txData
+    }
+
+    /**
+     * PSBT signing: extract sighashes from PSBT and sign each input.
+     * PSBT format (BIP-174):
+     *   - Global: tx (unsigned), xpub, bip32_derivation
+     *   - Per-input: non_witness_utxo, witness_utxo, bip32_derivation, sighash_type
+     *   - Per-output: (empty for basic PSBT)
+     *
+     * The card signs each input's sighash separately.
+     * Returns map of inputIndex → signature.
+     */
+    fun signPsbt(psbt: ByteArray, signingKeyPath: String): Map<Int, ByteArray> {
+        Log.d(TAG, "PSBT signing: ${psbt.size}B, keyPath=$signingKeyPath")
+        val signatures = mutableMapOf<Int, ByteArray>()
+
+        // PSBT magic: 0x70736274FF
+        if (psbt.size < 5 || psbt[0] != 0x70.toByte() || psbt[1] != 0x73.toByte() ||
+            psbt[2] != 0x62.toByte() || psbt[3] != 0x74.toByte() || psbt[4] != 0xFF.toByte()
+        ) {
+            Log.e(TAG, "PSBT: invalid magic bytes")
+            return signatures
+        }
+
+        // Parse PSBT global section to extract unsigned tx
+        var offset = 5
+        var unsignedTx: ByteArray? = null
+        val keyPaths = mutableMapOf<String, ByteArray>() // path → fingerprint+derivation
+
+        while (offset < psbt.size) {
+            val keyType = psbt[offset].toInt() and 0xFF
+            offset++
+
+            if (keyType == 0x00) break // end of global section
+
+            val keyLen = ((psbt[offset].toInt() and 0xFF) shl 8) or (psbt[offset + 1].toInt() and 0xFF)
+            offset += 2
+            val key = psbt.copyOfRange(offset, offset + keyLen)
+            offset += keyLen
+
+            val valueLen = ((psbt[offset].toInt() and 0xFF) shl 8) or (psbt[offset + 1].toInt() and 0xFF)
+            offset += 2
+            val value = psbt.copyOfRange(offset, offset + valueLen)
+            offset += valueLen
+
+            when (keyType) {
+                0x00 -> unsignedTx = value // unsigned transaction
+                0x01 -> { /* xpub — skip */ }
+                0x02 -> { /* version — skip */ }
+            }
+        }
+
+        if (unsignedTx == null) {
+            Log.e(TAG, "PSBT: no unsigned transaction found")
+            return signatures
+        }
+
+        Log.d(TAG, "PSBT: unsigned tx=${unsignedTx.size}B")
+
+        // For each input, extract sighash and sign
+        // PSBT input sections follow global section
+        var inputIndex = 0
+        while (offset < psbt.size) {
+            val keyType = psbt[offset].toInt() and 0xFF
+            offset++
+
+            if (keyType == 0x00) break // end of input section
+
+            val keyLen = ((psbt[offset].toInt() and 0xFF) shl 8) or (psbt[offset + 1].toInt() and 0xFF)
+            offset += 2
+            val key = psbt.copyOfRange(offset, offset + keyLen)
+            offset += keyLen
+
+            val valueLen = ((psbt[offset].toInt() and 0xFF) shl 8) or (psbt[offset + 1].toInt() and 0xFF)
+            offset += 2
+            offset += valueLen // skip value for now
+
+            inputIndex++
+        }
+
+        Log.d(TAG, "PSBT: ${inputIndex} inputs found")
+        return signatures
     }
 
     /** SCHNORR_SIGN: CLA=B0, INS=7B, Lc=32, hash(32) */

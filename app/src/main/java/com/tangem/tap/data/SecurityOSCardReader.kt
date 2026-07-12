@@ -221,6 +221,7 @@ class SecurityOSCardReader : CardReader {
                 0x7D.toByte() -> SecurityOSCommandMapper.CommandType.SP_IMPORT_KEYS
                 0xA4.toByte() -> SecurityOSCommandMapper.CommandType.SP_TWEAK
                 0xA5.toByte() -> SecurityOSCommandMapper.CommandType.SP_SIGN
+                0x6F.toByte() -> SecurityOSCommandMapper.CommandType.SIGN_HASH // PSBT sign_tx
                 else -> SecurityOSCommandMapper.CommandType.UNKNOWN
             }
             if (commandType != SecurityOSCommandMapper.CommandType.UNKNOWN) {
