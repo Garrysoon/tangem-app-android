@@ -559,6 +559,7 @@ object SecurityOSCommandMapper {
         }
 
         // Non-hardened derivation: card returns key at 3 levels, derive remaining levels in software
+        // IMPORTANT: must update BOTH pubkey AND chainCode — otherwise xpub mixes depth levels
         val fullPath = pendingFullPath
         pendingFullPath = null
         if (fullPath != null && fullPath.size > 12) {
@@ -575,6 +576,7 @@ object SecurityOSCommandMapper {
                     j += 4
                 }
                 pubkey = derived.publicKey
+                chainCode = derived.chainCode
                 Log.d(TAG, "Non-hardened derived: ${fullPath.size / 4} levels, final pubkey prefix=0x${String.format("%02X", pubkey[0])}")
             } catch (e: Exception) {
                 Log.e(TAG, "Non-hardened derivation failed: ${e.message}")

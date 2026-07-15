@@ -701,7 +701,7 @@ internal class TokenDetailsModel @Inject constructor(
                     TangemLogger.e("Failed to generate XPUB: ${throwable.message}")
                     TangemLogger.e(throwable.cause?.stackTraceToString().orEmpty())
                     uiMessageSender.send(
-                        SnackbarMessage(message = resourceReference(R.string.error_network_connection)),
+                        SnackbarMessage(message = resourceReference(R.string.common_error)),
                     )
                     ""
                 },
