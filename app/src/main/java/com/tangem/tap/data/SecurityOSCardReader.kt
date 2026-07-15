@@ -28,7 +28,7 @@ import kotlin.coroutines.resume
 /**
  * Result of PIN verification — maps to specific TangemSdkError instead of generic TagLost.
  */
-private sealed class PinVerifyResult {
+internal sealed class PinVerifyResult {
     data class Success(val remaining: Int) : PinVerifyResult()
     data class WrongPin(val remaining: Int) : PinVerifyResult()
     object Blocked : PinVerifyResult()
