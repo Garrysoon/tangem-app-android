@@ -342,7 +342,7 @@ class SecurityOSCardReader : CardReader {
             }
             lastPinAttemptTime = System.currentTimeMillis()
 
-            val pin = byteArrayOf(0x31, 0x32, 0x33, 0x34) // "1234" (default after firmware reinstall)
+            val pin = SecurityOSPinRepository.getPin()
             val verifyApdu = byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, pin.size.toByte()) + pin
             val response = nfcTag?.isoDep?.transceive(verifyApdu)
             val sw = if (response != null && response.size >= 2) {

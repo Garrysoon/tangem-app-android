@@ -84,7 +84,8 @@ class SecurityOSSessionViewDelegate : SessionViewDelegate {
         callback: CompletionCallback<String>,
     ) {
         Log.d(TAG, "Request user code: $type, cardId=$cardId")
-        callback(CompletionResult.Success(""))
+        val pin = SecurityOSPinRepository.getPin()
+        callback(CompletionResult.Success(String(pin)))
     }
 
     override fun showWelcomeBackWarning(callback: CompletionCallback<Unit>) {

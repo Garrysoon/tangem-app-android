@@ -442,7 +442,7 @@ object SecurityOSCommandMapper {
         return byteArrayOf(SOS_CLA, 0x44.toByte(), pinType, 0x00, data.size.toByte()) + data
     }
 
-    private val PIN_BYTES = byteArrayOf(0x31, 0x32, 0x33, 0x34) // "1234" (default after firmware reinstall)
+    private val PIN_BYTES: ByteArray get() = SecurityOSPinRepository.getPin()
 
     private fun buildImportSeed(seed: ByteArray): ByteArray {
         lastCommandType = CommandType.IMPORT_SEED
@@ -452,7 +452,7 @@ object SecurityOSCommandMapper {
 
     /** VERIFY PIN: CLA=B0, INS=42, P1=00(User)/01(Admin), P2=00 */
     fun buildVerifyPin(): ByteArray {
-        val pin = byteArrayOf(0x31, 0x32, 0x33, 0x34) // "1234" (default after firmware reinstall)
+        val pin = SecurityOSPinRepository.getPin()
         return if (isTlvMode) {
             // TLV format: tag 0x10 = PIN
             val tlvData = byteArrayOf(0x10, pin.size.toByte()) + pin
