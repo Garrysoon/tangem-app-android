@@ -519,16 +519,22 @@ object SecurityOSCommandMapper {
         val cardDataTlv = mutableListOf<ByteArray>()
         val pubkey = cachedAuthentikey ?: ByteArray(65)
 
+        // Parse is_seeded from GET_STATUS response (byte 9 = is_seeded flag)
+        val isSeeded = if (data.size > 9) data[9].toInt() != 0 else false
+        Log.d(TAG, "GET_STATUS: is_seeded=$isSeeded")
+
         tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))         // 0x01
         tlvList.add(byteArrayOf(0x02, 0x01, 0x02))               // 0x02 Status=Loaded
         tlvList.add(buildTlv(TAG_CARD_PUBLIC_KEY, pubkey))        // 0x03
         tlvList.add(buildTlv(0x05, "secp256k1".toByteArray()))   // 0x05 CurveId
         tlvList.add(byteArrayOf(0x07, 0x01, 0x03))               // 0x07 SigningMethod=ECDSA
-        tlvList.add(byteArrayOf(0x0A, 0x04, 0x00, 0x20, 0x00, 0x00)) // 0x0A SettingsMask (AllowHDWallets=0x00200000)
+        tlvList.add(byteArrayOf(0x0A, 0x04, 0x00, 0x20, 0x00, 0x00)) // 0x0A SettingsMask
         tlvList.add(buildTlv(0x20, "TANGEM SDK".toByteArray()))  // 0x20 ManufacturerName
         tlvList.add(buildTlv(0x30, pubkey))                       // 0x30 IssuerPublicKey
-        tlvList.add(byteArrayOf(0x66, 0x01, 0x01))               // 0x66 WalletsCount
-        tlvList.add(buildTlv(TAG_FIRMWARE, "4.0.0r".toByteArray())) // Firmware (Release type, >=4.0 for multi-wallet)
+        // WalletsCount: 0 if no seed (SDK will offer Create Wallet), 1 if seeded
+        val walletsCount = if (isSeeded) 0x01.toByte() else 0x00.toByte()
+        tlvList.add(byteArrayOf(0x66, 0x01, walletsCount))       // 0x66 WalletsCount
+        tlvList.add(buildTlv(TAG_FIRMWARE, "4.0.0r".toByteArray())) // Firmware
         tlvList.add(byteArrayOf(0x0F, 0x02, 0x64, 0x00))        // 0x0F Health
 
         // CardData nested TLV (0x0C)
