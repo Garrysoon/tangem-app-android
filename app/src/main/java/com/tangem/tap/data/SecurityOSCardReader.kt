@@ -345,9 +345,6 @@ class SecurityOSCardReader : CardReader {
         }
     }
 
-    // Rate limiting: minimum 5 seconds between PIN attempts
-    private var lastPinAttemptTime: Long = 0
-    private val PIN_MIN_INTERVAL_MS = 5000L
     private val PIN_MAX_TRIES = 3
 
     // Remaining PIN attempts tracking (0 = blocked, 1..3 = attempts left)
@@ -358,16 +355,6 @@ class SecurityOSCardReader : CardReader {
 
     private fun verifyPin(): PinVerifyResult {
         try {
-            // Rate limiting — prevent rapid brute-force
-            val now = System.currentTimeMillis()
-            val elapsed = now - lastPinAttemptTime
-            if (elapsed < PIN_MIN_INTERVAL_MS) {
-                val waitMs = PIN_MIN_INTERVAL_MS - elapsed
-                Log.w(TAG, "PIN rate limit: waiting ${waitMs}ms before next attempt")
-                Thread.sleep(waitMs)
-            }
-            lastPinAttemptTime = System.currentTimeMillis()
-
             val pin = SecurityOSPinRepository.getPin()
             // Use TLV format when in TLV mode (after SET_PROTOCOL), binary format otherwise
             val verifyApdu = if (SecurityOSCommandMapper.isTlvMode) {
