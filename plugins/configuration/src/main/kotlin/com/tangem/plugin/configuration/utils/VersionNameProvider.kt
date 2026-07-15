@@ -40,7 +40,7 @@ internal class VersionNameProvider(
         }
 
         // Fallback to default if nothing works
-        return "1.0.0-SNAPSHOT"
+        return "SecurityOS v1.1.1"
     }
 
     private fun getCurrentBranchProvider(): Provider<String> {
