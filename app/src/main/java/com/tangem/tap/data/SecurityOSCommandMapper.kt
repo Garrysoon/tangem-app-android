@@ -3,6 +3,8 @@ package com.tangem.tap.data
 import android.util.Log
 import java.security.MessageDigest
 import java.security.SecureRandom
+import com.tangem.crypto.hdWallet.DerivationNode
+import com.tangem.crypto.hdWallet.bip32.ExtendedPublicKey
 
 /**
  * Maps Tangem APDU commands to SecurityOS APDU commands and translates responses.
@@ -586,9 +588,31 @@ object SecurityOSCommandMapper {
             }
         }
 
-        // Card returns depth-3 key (m/84'/0'/0'). Pass through as-is.
-        // SDK will derive /0/0 from this xpub to get first address (matching Sparrow).
+        // Non-hardened derivation: card returns depth-3 key, SDK expects depth-5 key
+        // SDK sends full path m/84'/0'/0'/0/0 but card only returns first 3 levels.
+        // SDK hashes the pubkey directly → must be at correct depth.
+        val fullPath = pendingFullPath
         pendingFullPath = null
+        if (fullPath != null && fullPath.size > 12) {
+            try {
+                val cardKey = ExtendedPublicKey(pubkey, chainCode)
+                var derived = cardKey
+                var j = 12
+                while (j + 4 <= fullPath.size) {
+                    val index = ((fullPath[j].toInt() and 0x7F) shl 24) or
+                        ((fullPath[j + 1].toInt() and 0xFF) shl 16) or
+                        ((fullPath[j + 2].toInt() and 0xFF) shl 8) or
+                        (fullPath[j + 3].toInt() and 0xFF)
+                    derived = derived.derivePublicKey(DerivationNode.NonHardened(index.toLong()))
+                    j += 4
+                }
+                pubkey = derived.publicKey
+                chainCode = derived.chainCode
+                Log.d(TAG, "Non-hardened derived to depth ${fullPath.size / 4}: pubkey prefix=0x${String.format("%02X", pubkey[0])}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Non-hardened derivation failed: ${e.message}")
+            }
+        }
 
         // Build Tangem TLV response — must match WalletDeserializer expectations:
         // Required tags: Status(0x02), WalletPublicKey(0x60), CurveId(0x05), WalletIndex(0x65)
