@@ -495,6 +495,17 @@ object SecurityOSCommandMapper {
                 in 0x6F01..0x6F15 -> Log.e(TAG, "  -> Init failure at step ${sw - 0x6F00}")
                 else -> Log.e(TAG, "  -> Unknown SW")
             }
+            // When card returns 9C14 (BIP32 not initialized) for GET_XPUB,
+            // return a fake "wallet not loaded" TLV so SDK handles it gracefully
+            if (sw == 0x9C14 && commandType == CommandType.GET_XPUB) {
+                Log.d(TAG, "BIP32 not initialized — returning wallet-not-loaded TLV")
+                val tlvList = mutableListOf<ByteArray>()
+                tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+                tlvList.add(byteArrayOf(0x02, 0x01, 0x00))  // Status = Empty
+                tlvList.add(buildTlv(0x05, "secp256k1".toByteArray()))
+                tlvList.add(byteArrayOf(0x65, 0x01, 0x00))   // WalletIndex = 0
+                return wrapWithSw(tlvList)
+            }
             return sosResponse
         }
 
@@ -524,7 +535,10 @@ object SecurityOSCommandMapper {
         Log.d(TAG, "GET_STATUS: is_seeded=$isSeeded")
 
         tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))         // 0x01
-        tlvList.add(byteArrayOf(0x02, 0x01, 0x02))               // 0x02 Status=Loaded
+        // Status: Empty (1) if no seed → SDK sees card.wallets.isEmpty() → offers Create Wallet
+        // Status: Loaded (2) if seeded → SDK reads wallet data
+        val statusByte = if (isSeeded) 0x02.toByte() else 0x01.toByte()
+        tlvList.add(byteArrayOf(0x02, 0x01, statusByte))         // 0x02 Status
         tlvList.add(buildTlv(TAG_CARD_PUBLIC_KEY, pubkey))        // 0x03
         tlvList.add(buildTlv(0x05, "secp256k1".toByteArray()))   // 0x05 CurveId
         tlvList.add(byteArrayOf(0x07, 0x01, 0x03))               // 0x07 SigningMethod=ECDSA
