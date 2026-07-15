@@ -495,17 +495,6 @@ object SecurityOSCommandMapper {
                 in 0x6F01..0x6F15 -> Log.e(TAG, "  -> Init failure at step ${sw - 0x6F00}")
                 else -> Log.e(TAG, "  -> Unknown SW")
             }
-            // When card returns 9C14 (BIP32 not initialized) for GET_XPUB,
-            // return a fake "wallet not loaded" TLV so SDK handles it gracefully
-            if (sw == 0x9C14 && commandType == CommandType.GET_XPUB) {
-                Log.d(TAG, "BIP32 not initialized — returning wallet-not-loaded TLV")
-                val tlvList = mutableListOf<ByteArray>()
-                tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
-                tlvList.add(byteArrayOf(0x02, 0x01, 0x00))  // Status = Empty
-                tlvList.add(buildTlv(0x05, "secp256k1".toByteArray()))
-                tlvList.add(byteArrayOf(0x65, 0x01, 0x00))   // WalletIndex = 0
-                return wrapWithSw(tlvList)
-            }
             return sosResponse
         }
 

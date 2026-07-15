@@ -307,8 +307,42 @@ class SecurityOSCardReader : CardReader {
         }
 
         val rawResponse: ByteArray? = try {
-            val response = nfcTag?.isoDep?.transceive(dataToSend)
+            var response = nfcTag?.isoDep?.transceive(dataToSend)
             Log.d(TAG, "response: ${response?.joinToString("") { String.format("%02X", it) }}")
+
+            // Auto-generate seed if GET_XPUB returns 9C14 (BIP32 not initialized)
+            if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB && response != null && response.size >= 2) {
+                val respSw = (response[response.size - 2].toInt() and 0xFF) shl 8 or
+                    (response[response.size - 1].toInt() and 0xFF)
+                if (respSw == 0x9C14) {
+                    Log.d(TAG, "GET_XPUB returned 9C14 — auto-generating seed on card")
+                    try {
+                        // Verify PIN in TLV mode (card is already in TLV mode from pre-command)
+                        val pin = SecurityOSPinRepository.getPin()
+                        val tlvData = byteArrayOf(0x10, pin.size.toByte()) + pin
+                        val verifyApdu = byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, tlvData.size.toByte()) + tlvData
+                        nfcTag?.isoDep?.transceive(verifyApdu)
+
+                        // Send GenerateSeed (INS=0x6E)
+                        val genSeedCmd = byteArrayOf(0xB0.toByte(), 0x6E.toByte(), 0x00, 0x00, 0x00)
+                        val genResponse = nfcTag?.isoDep?.transceive(genSeedCmd)
+                        val genSw = if (genResponse != null && genResponse.size >= 2) {
+                            (genResponse[genResponse.size - 2].toInt() and 0xFF) shl 8 or
+                                (genResponse[genResponse.size - 1].toInt() and 0xFF)
+                        } else 0
+                        Log.d(TAG, "GenerateSeed result: SW=${String.format("%04X", genSw)}")
+
+                        if (genSw == 0x9000) {
+                            // Seed generated! Retry GET_XPUB
+                            response = nfcTag?.isoDep?.transceive(dataToSend)
+                            Log.d(TAG, "GET_XPUB retry: ${response?.joinToString("") { String.format("%02X", it) }}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Auto-seed generation failed: ${e.message}")
+                    }
+                }
+            }
+
             // Send post-command ONLY after GET_XPUB
             if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
                 val postCmd = SecurityOSCommandMapper.pendingPostCommand
