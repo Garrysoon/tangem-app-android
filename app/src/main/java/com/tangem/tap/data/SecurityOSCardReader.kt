@@ -198,7 +198,7 @@ class SecurityOSCardReader : CardReader {
             // Commands that need fake response WITHOUT hitting the card
             val fakeResponse = when (ins) {
                 0xF3, 0xF4, 0xF5 -> SecurityOSCommandMapper.buildAttestFakeResponse()
-                0xE0, 0xE1, 0xF6, 0xF7, 0xD0, 0xD1, 0xFC -> SecurityOSCommandMapper.buildFakeSuccessResponse()
+                0xE0, 0xE1, 0xF6, 0xF7, 0xD0, 0xD1 -> SecurityOSCommandMapper.buildFakeSuccessResponse()
                 else -> null
             }
             if (fakeResponse != null) {

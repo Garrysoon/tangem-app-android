@@ -40,6 +40,7 @@ object SecurityOSCommandMapper {
     private const val SOS_CLA: Byte = 0xB0.toByte()
     private const val SOS_INS_VERIFY_PIN: Byte = 0x42
     private const val SOS_INS_IMPORT_SEED: Byte = 0x6C
+    private const val SOS_INS_GENERATE_SEED: Byte = 0x6E
     private const val SOS_INS_GET_XPUB: Byte = 0x6D
     private const val SOS_INS_SIGN_HASH: Byte = 0x7A
     private const val SOS_INS_SIGN_TX: Byte = 0x6F
@@ -114,6 +115,7 @@ object SecurityOSCommandMapper {
             TANGEM_INS_CREATE_WALLET -> mapCreateWallet(apduData)
             TANGEM_INS_SET_PIN -> mapSetPin(apduData)
             TANGEM_INS_PURGE_WALLET -> mapPurgeWallet(apduData)
+            0x6E.toByte() -> mapGenerateSeed()
             TANGEM_INS_READ_USER_DATA -> {
                 Log.d(TAG, "ReadUserData → fake empty response")
                 buildFakeUserDataResponse()
@@ -252,9 +254,20 @@ object SecurityOSCommandMapper {
         return null
     }
 
+    /**
+     * GenerateSeed: card generates random seed internally via TRNG.
+     * Returns same format as IMPORT_SEED (authentikey coordx + selfsig).
+     */
+    private fun mapGenerateSeed(): ByteArray? {
+        Log.d(TAG, "GenerateSeed -> forwarding to card (INS=0x6E)")
+        lastCommandType = CommandType.IMPORT_SEED
+        return byteArrayOf(SOS_CLA, SOS_INS_GENERATE_SEED, 0x00, 0x00)
+    }
+
     private fun mapPurgeWallet(originalApdu: ByteArray): ByteArray? {
-        Log.d(TAG, "PurgeWallet → fake success (dangerous operation)")
-        return buildFakeSuccessResponse()
+        Log.d(TAG, "PurgeWallet → forwarding to card (INS=0xFC)")
+        lastCommandType = CommandType.IMPORT_SEED
+        return byteArrayOf(SOS_CLA, 0xFC.toByte(), 0x00, 0x00)
     }
 
     fun buildFakeSuccessResponse(): ByteArray {
