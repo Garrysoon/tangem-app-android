@@ -239,17 +239,49 @@ class SecurityOSCardReader : CardReader {
             Log.d(TAG, "passthrough CLA=${String.format("%02X", aidReplaced[0])} INS=$ins: ${dataToSend.joinToString("") { String.format("%02X", it) }}")
         }
 
-        // Verify PIN immediately before transceive — no other code between
+        // 1. Send pre-command (SET_PROTOCOL TLV) FIRST — switches card to TLV mode
+        // Must happen BEFORE verifyPin, because SET_PROTOCOL resets PIN state
+        if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
+            val preCmd = SecurityOSCommandMapper.pendingPreCommand
+            if (preCmd != null) {
+                SecurityOSCommandMapper.pendingPreCommand = null
+                try {
+                    Log.d(TAG, "pre-command: ${preCmd.joinToString("") { String.format("%02X", it) }}")
+                    nfcTag?.isoDep?.transceive(preCmd)
+                } catch (e: Exception) {
+                    Log.e(TAG, "pre-command failed: ${e.message}")
+                }
+            }
+        }
+
+        // 2. Verify PIN AFTER SET_PROTOCOL — card is now in TLV mode, PIN verify must use TLV format
         if (needsPin) {
             when (val pinResult = verifyPin()) {
                 is PinVerifyResult.Success -> { /* OK, continue */ }
                 is PinVerifyResult.WrongPin -> {
                     Log.e(TAG, "Wrong PIN — ${pinResult.remaining} attempts left")
+                    // Send post-command to switch back to binary
+                    if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
+                        val postCmd = SecurityOSCommandMapper.pendingPostCommand
+                        if (postCmd != null) {
+                            SecurityOSCommandMapper.pendingPostCommand = null
+                            SecurityOSCommandMapper.isTlvMode = false
+                            try { nfcTag?.isoDep?.transceive(postCmd) } catch (_: Exception) {}
+                        }
+                    }
                     callback(CompletionResult.Failure(TangemSdkError.WrongAccessCode()))
                     return
                 }
                 is PinVerifyResult.Blocked -> {
                     Log.e(TAG, "Card blocked — PUK required")
+                    if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
+                        val postCmd = SecurityOSCommandMapper.pendingPostCommand
+                        if (postCmd != null) {
+                            SecurityOSCommandMapper.pendingPostCommand = null
+                            SecurityOSCommandMapper.isTlvMode = false
+                            try { nfcTag?.isoDep?.transceive(postCmd) } catch (_: Exception) {}
+                        }
+                    }
                     callback(CompletionResult.Failure(TangemSdkError.CardVerificationFailed()))
                     return
                 }
@@ -260,22 +292,16 @@ class SecurityOSCardReader : CardReader {
                 }
                 is PinVerifyResult.Error -> {
                     Log.e(TAG, "PIN verify error: ${pinResult.message}")
+                    if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
+                        val postCmd = SecurityOSCommandMapper.pendingPostCommand
+                        if (postCmd != null) {
+                            SecurityOSCommandMapper.pendingPostCommand = null
+                            SecurityOSCommandMapper.isTlvMode = false
+                            try { nfcTag?.isoDep?.transceive(postCmd) } catch (_: Exception) {}
+                        }
+                    }
                     callback(CompletionResult.Failure(TangemSdkError.ErrorProcessingCommand()))
                     return
-                }
-            }
-        }
-
-        // Send pre-command ONLY for GET_XPUB (not for SELECT, GET_STATUS, etc.)
-        if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
-            val preCmd = SecurityOSCommandMapper.pendingPreCommand
-            if (preCmd != null) {
-                SecurityOSCommandMapper.pendingPreCommand = null
-                try {
-                    Log.d(TAG, "pre-command: ${preCmd.joinToString("") { String.format("%02X", it) }}")
-                    nfcTag?.isoDep?.transceive(preCmd)
-                } catch (e: Exception) {
-                    Log.e(TAG, "pre-command failed: ${e.message}")
                 }
             }
         }
@@ -343,7 +369,13 @@ class SecurityOSCardReader : CardReader {
             lastPinAttemptTime = System.currentTimeMillis()
 
             val pin = SecurityOSPinRepository.getPin()
-            val verifyApdu = byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, pin.size.toByte()) + pin
+            // Use TLV format when in TLV mode (after SET_PROTOCOL), binary format otherwise
+            val verifyApdu = if (SecurityOSCommandMapper.isTlvMode) {
+                val tlvData = byteArrayOf(0x10, pin.size.toByte()) + pin
+                byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, tlvData.size.toByte()) + tlvData
+            } else {
+                byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, pin.size.toByte()) + pin
+            }
             val response = nfcTag?.isoDep?.transceive(verifyApdu)
             val sw = if (response != null && response.size >= 2) {
                 (response[response.size - 2].toInt() and 0xFF) shl 8 or (response[response.size - 1].toInt() and 0xFF)
