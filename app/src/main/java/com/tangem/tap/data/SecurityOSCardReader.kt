@@ -25,6 +25,17 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
 
+/**
+ * Result of PIN verification — maps to specific TangemSdkError instead of generic TagLost.
+ */
+private sealed class PinVerifyResult {
+    data class Success(val remaining: Int) : PinVerifyResult()
+    data class WrongPin(val remaining: Int) : PinVerifyResult()
+    object Blocked : PinVerifyResult()
+    object TagLost : PinVerifyResult()
+    data class Error(val message: String) : PinVerifyResult()
+}
+
 class SecurityOSCardReader : CardReader {
 
     companion object {
@@ -230,10 +241,28 @@ class SecurityOSCardReader : CardReader {
 
         // Verify PIN immediately before transceive — no other code between
         if (needsPin) {
-            if (!verifyPin()) {
-                Log.e(TAG, "PIN verify failed or tag lost — aborting command")
-                callback(CompletionResult.Failure(TangemSdkError.TagLost()))
-                return
+            when (val pinResult = verifyPin()) {
+                is PinVerifyResult.Success -> { /* OK, continue */ }
+                is PinVerifyResult.WrongPin -> {
+                    Log.e(TAG, "Wrong PIN — ${pinResult.remaining} attempts left")
+                    callback(CompletionResult.Failure(TangemSdkError.WrongAccessCode()))
+                    return
+                }
+                is PinVerifyResult.Blocked -> {
+                    Log.e(TAG, "Card blocked — PUK required")
+                    callback(CompletionResult.Failure(TangemSdkError.CardVerificationFailed()))
+                    return
+                }
+                is PinVerifyResult.TagLost -> {
+                    Log.e(TAG, "Tag lost during PIN verify")
+                    callback(CompletionResult.Failure(TangemSdkError.TagLost()))
+                    return
+                }
+                is PinVerifyResult.Error -> {
+                    Log.e(TAG, "PIN verify error: ${pinResult.message}")
+                    callback(CompletionResult.Failure(TangemSdkError.ErrorProcessingCommand()))
+                    return
+                }
             }
         }
 
@@ -301,7 +330,7 @@ class SecurityOSCardReader : CardReader {
     var isPinBlocked: Boolean = false
         private set
 
-    private fun verifyPin(): Boolean {
+    private fun verifyPin(): PinVerifyResult {
         try {
             // Rate limiting — prevent rapid brute-force
             val now = System.currentTimeMillis()
@@ -325,10 +354,9 @@ class SecurityOSCardReader : CardReader {
                     Log.d(TAG, "verify PIN: SW=9000 OK")
                     lastPinRemainingAttempts = PIN_MAX_TRIES
                     isPinBlocked = false
-                    return true
+                    return PinVerifyResult.Success(PIN_MAX_TRIES)
                 }
                 in 0x6300..0x630F -> {
-                    // Wrong PIN — SW=63Cx where low nibble = remaining attempts
                     val remaining = sw and 0x0F
                     lastPinRemainingAttempts = remaining
                     isPinBlocked = false
@@ -336,28 +364,27 @@ class SecurityOSCardReader : CardReader {
                     if (remaining == 1) {
                         Log.e(TAG, "WARNING: Only 1 attempt left! Card will be LOCKED on next failure!")
                     }
-                    return false
+                    return PinVerifyResult.WrongPin(remaining)
                 }
                 0x9C0C -> {
-                    // PIN blocked
                     lastPinRemainingAttempts = 0
                     isPinBlocked = true
                     Log.e(TAG, "verify PIN: CARD BLOCKED (SW=9C0C) — PUK required to reset!")
-                    return false
+                    return PinVerifyResult.Blocked
                 }
                 else -> {
                     Log.e(TAG, "verify PIN: unexpected SW=${String.format("%04X", sw)}")
-                    return false
+                    return PinVerifyResult.Error("Unexpected SW: ${String.format("%04X", sw)}")
                 }
             }
         } catch (e: TagLostException) {
             Log.e(TAG, "TagLost during PIN verify")
             nfcTag = null
             listener?.readingIsActive = false
-            return false
+            return PinVerifyResult.TagLost
         } catch (e: Exception) {
             Log.e(TAG, "verify PIN failed: ${e.message}")
-            return false
+            return PinVerifyResult.Error(e.message ?: "Unknown error")
         }
     }
 

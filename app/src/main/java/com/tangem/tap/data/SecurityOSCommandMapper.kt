@@ -473,7 +473,25 @@ object SecurityOSCommandMapper {
         } else return null
 
         if (sw != 0x9000) {
-            Log.e(TAG, "Error SW=${String.format("%04X", sw)}")
+            Log.e(TAG, "Error SW=${String.format("%04X", sw)} for command $commandType")
+            when (sw) {
+                0x6982 -> Log.e(TAG, "  -> Security error: PIN not verified")
+                0x6984 -> Log.e(TAG, "  -> Admin PIN required")
+                0x9C0C -> Log.e(TAG, "  -> PIN blocked, PUK required")
+                0x9C14 -> Log.e(TAG, "  -> BIP32 not initialized (no seed)")
+                0x9C20 -> Log.e(TAG, "  -> Secure channel required")
+                0x9C21 -> Log.e(TAG, "  -> Secure channel not initialized")
+                0x9C22 -> Log.e(TAG, "  -> SC wrong IV")
+                0x9C23 -> Log.e(TAG, "  -> SC MAC mismatch")
+                0x9C40 -> Log.e(TAG, "  -> Schnorr signing error")
+                0x9C44 -> Log.e(TAG, "  -> MuSig2 error")
+                0x9C45 -> Log.e(TAG, "  -> Silent Payments error")
+                0x9C50 -> Log.e(TAG, "  -> TRNG health failure")
+                0x9CFF -> Log.e(TAG, "  -> Authentikey error")
+                in 0x6300..0x630F -> Log.e(TAG, "  -> Wrong PIN, ${sw and 0x0F} attempts left")
+                in 0x6F01..0x6F15 -> Log.e(TAG, "  -> Init failure at step ${sw - 0x6F00}")
+                else -> Log.e(TAG, "  -> Unknown SW")
+            }
             return sosResponse
         }
 
