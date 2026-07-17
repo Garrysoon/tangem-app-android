@@ -42,6 +42,7 @@ import com.tangem.domain.wallets.analytics.Settings
 import com.tangem.domain.wallets.analytics.WalletSettingsAnalyticEvents
 import com.tangem.domain.wallets.analytics.WalletSettingsAnalyticEvents.RecoveryPhraseScreenAction
 import com.tangem.domain.wallets.usecase.*
+import com.tangem.domain.wallets.usecase.PurgeWalletUseCase
 import com.tangem.feature.walletsettings.component.WalletSettingsComponent
 import com.tangem.feature.walletsettings.entity.*
 import com.tangem.feature.walletsettings.impl.R
@@ -92,6 +93,7 @@ internal class WalletSettingsModel @Inject constructor(
     private val accountListSortingSaver: AccountListSortingSaver,
     private val startAssetsDiscoveryUseCase: StartAssetsDiscoveryUseCase,
     private val hotWalletFeatureToggles: HotWalletFeatureToggles,
+    private val purgeWalletUseCase: PurgeWalletUseCase,
 ) : Model() {
 
     val params: WalletSettingsComponent.Params = paramsContainer.require()
@@ -260,21 +262,56 @@ internal class WalletSettingsModel @Inject constructor(
             startAssetsDiscoveryUseCase.cancel(params.userWalletId)
         }
 
-        val hasUserWallets = deleteWalletUseCase(params.userWalletId).getOrElse { error ->
+        deleteWalletUseCase(params.userWalletId).getOrElse { error ->
             TangemLogger.e("Unable to delete wallet: $error")
-
-            messageSender.send(
-                message = SnackbarMessage(resourceReference(R.string.common_unknown_error)),
-            )
-
+            messageSender.send(SnackbarMessage(resourceReference(R.string.common_unknown_error)))
             return@launch
         }
 
-        if (hasUserWallets) {
-            router.pop()
-        } else {
-            router.replaceAll(AppRoute.Home())
+        // Restart app to clear all caches
+        restartApp()
+    }
+
+    private fun removeWalletFromCard() = modelScope.launch {
+        val userWallet = getUserWalletUseCase(params.userWalletId).getOrNull()
+        if (userWallet !is UserWallet.Cold) return@launch
+
+        val wallet = userWallet.scanResponse.card.wallets.firstOrNull() ?: return@launch
+        val walletPublicKeyHex = wallet.publicKey.joinToString("") { "%02x".format(it) }
+
+        purgeWalletUseCase(walletPublicKeyHex).onRight {
+            TangemLogger.i("Wallet purged from card successfully")
+            deleteWalletUseCase(params.userWalletId)
+            restartApp()
+        }.onLeft { error ->
+            TangemLogger.e("Failed to purge wallet from card: $error")
+            messageSender.send(SnackbarMessage(resourceReference(R.string.common_unknown_error)))
         }
+    }
+
+    private fun restartApp() {
+        kotlinx.coroutines.GlobalScope.launch {
+            kotlinx.coroutines.delay(3000)
+            Runtime.getRuntime().exit(0)
+        }
+    }
+
+    private fun onRemoveWalletFromCardClick() {
+        val userWallet = getUserWalletUseCase(params.userWalletId).getOrNull() as? UserWallet.Cold
+            ?: return
+
+        val message = DialogMessage(
+            message = resourceReference(id = R.string.user_wallet_list_remove_from_card_prompt),
+            firstActionBuilder = {
+                EventMessageAction(
+                    title = resourceReference(R.string.settings_remove_wallet_from_card),
+                    isWarning = true,
+                    onClick = ::removeWalletFromCard,
+                )
+            },
+            secondActionBuilder = { cancelAction() },
+        )
+        messageSender.send(message)
     }
 
     private fun onLinkMoreCardsClick(scanResponse: ScanResponse) {
@@ -507,7 +544,13 @@ internal class WalletSettingsModel @Inject constructor(
                             onClick = ::forgetWallet,
                         )
                     },
-                    secondActionBuilder = { cancelAction() },
+                    secondActionBuilder = {
+                        EventMessageAction(
+                            title = resourceReference(R.string.settings_remove_wallet_from_card),
+                            isWarning = true,
+                            onClick = ::onRemoveWalletFromCardClick,
+                        )
+                    },
                 )
             }
             is UserWallet.Hot -> {

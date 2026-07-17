@@ -94,6 +94,7 @@ object SecurityOSCommandMapper {
     private var cachedAuthentikey: ByteArray? = null
     var pendingPreCommand: ByteArray? = null
     var pendingPostCommand: ByteArray? = null
+    var pendingPreAdminCommand: ByteArray? = null
     var isTlvMode: Boolean = false
     private var pendingFullPath: ByteArray? = null
 
@@ -267,7 +268,25 @@ object SecurityOSCommandMapper {
     private fun mapPurgeWallet(originalApdu: ByteArray): ByteArray? {
         Log.d(TAG, "PurgeWallet → forwarding to card (INS=0xFC)")
         lastCommandType = CommandType.IMPORT_SEED
+
+        // Build Admin PIN verify command (P1=0x01 for Admin PIN)
+        val adminPin = SecurityOSPinRepository.getAdminPin()
+        pendingPreAdminCommand = if (isTlvMode) {
+            val tlvData = byteArrayOf(0x10, adminPin.size.toByte()) + adminPin
+            byteArrayOf(SOS_CLA, SOS_INS_VERIFY_PIN, 0x01, 0x00, tlvData.size.toByte()) + tlvData
+        } else {
+            byteArrayOf(SOS_CLA, SOS_INS_VERIFY_PIN, 0x01, 0x00, adminPin.size.toByte()) + adminPin
+        }
+        Log.d(TAG, "PurgeWallet: Admin PIN verify command prepared (${adminPin.size}B)")
+
         return byteArrayOf(SOS_CLA, 0xFC.toByte(), 0x00, 0x00)
+    }
+
+    fun buildFakePurgeWalletResponse(): ByteArray {
+        // PurgeWallet returns only SW=9000, but SDK expects TLV with CardId
+        val tlvList = mutableListOf<ByteArray>()
+        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        return wrapWithSw(tlvList)
     }
 
     fun buildFakeSuccessResponse(): ByteArray {
@@ -442,7 +461,7 @@ object SecurityOSCommandMapper {
         return byteArrayOf(SOS_CLA, 0x44.toByte(), pinType, 0x00, data.size.toByte()) + data
     }
 
-    private val PIN_BYTES: ByteArray get() = SecurityOSPinRepository.getPin()
+    private val PIN_BYTES: ByteArray get() = SecurityOSPinRepository.getUserPin()
 
     private fun buildImportSeed(seed: ByteArray): ByteArray {
         lastCommandType = CommandType.IMPORT_SEED
@@ -452,7 +471,7 @@ object SecurityOSCommandMapper {
 
     /** VERIFY PIN: CLA=B0, INS=42, P1=00(User)/01(Admin), P2=00 */
     fun buildVerifyPin(): ByteArray {
-        val pin = SecurityOSPinRepository.getPin()
+        val pin = SecurityOSPinRepository.getUserPin()
         return if (isTlvMode) {
             // TLV format: tag 0x10 = PIN
             val tlvData = byteArrayOf(0x10, pin.size.toByte()) + pin
@@ -498,7 +517,13 @@ object SecurityOSCommandMapper {
             return sosResponse
         }
 
-        val data = if (sosResponse.size > 2) sosResponse.copyOfRange(0, sosResponse.size - 2) else return sosResponse
+        // PurgeWallet returns only SW=9000 without data — build fake TLV response
+        if (commandType == CommandType.IMPORT_SEED && sosResponse.size <= 2) {
+            Log.d(TAG, "PurgeWallet: building fake TLV response")
+            return buildFakePurgeWalletResponse()
+        }
+
+        val data = sosResponse.copyOfRange(0, sosResponse.size - 2)
 
         return when (commandType) {
             CommandType.GET_STATUS -> convertGetStatusResponse(data)

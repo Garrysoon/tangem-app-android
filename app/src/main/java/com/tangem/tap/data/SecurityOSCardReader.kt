@@ -85,6 +85,8 @@ class SecurityOSCardReader : CardReader {
     override fun stopSession(cancelled: Boolean) {
         Log.d(TAG, "stop NFC session, cancelled=$cancelled")
         listener?.readingIsActive = false
+        SecurityOSPinRepository.clearAll()
+        needsAdminPin = false
     }
 
     private var pendingSelectAfterConnect = false
@@ -194,6 +196,7 @@ class SecurityOSCardReader : CardReader {
                 0xFB -> SecurityOSCommandMapper.lastCommandType // set by mapper (SIGN_HASH or SCHNORR_SIGN)
                 0xF3, 0xF4, 0xF5 -> SecurityOSCommandMapper.CommandType.GET_AUTHENTIKEY
                 0xF8 -> SecurityOSCommandMapper.CommandType.IMPORT_SEED
+                0xFC -> SecurityOSCommandMapper.CommandType.IMPORT_SEED // PurgeWallet needs Admin PIN
                 else -> SecurityOSCommandMapper.CommandType.UNKNOWN
             }
             SecurityOSCommandMapper.lastCommandType = commandType
@@ -204,7 +207,11 @@ class SecurityOSCardReader : CardReader {
                 SecurityOSCommandMapper.CommandType.SIGN_HASH,
                 SecurityOSCommandMapper.CommandType.SCHNORR_SIGN,
                 SecurityOSCommandMapper.CommandType.IMPORT_SEED,
-            )
+            ) && ins != 0xFC // PurgeWallet handles Admin PIN via pendingPreAdminCommand
+
+            // PurgeWallet (0xFC) requires Admin PIN (P2=0x01)
+            needsAdminPin = ins == 0xFC
+            Log.d(TAG, "needsPin=$needsPin, needsAdminPin=$needsAdminPin")
 
             // Commands that need fake response WITHOUT hitting the card
             val fakeResponse = when (ins) {
@@ -260,6 +267,7 @@ class SecurityOSCardReader : CardReader {
                 is PinVerifyResult.Success -> { /* OK, continue */ }
                 is PinVerifyResult.WrongPin -> {
                     Log.e(TAG, "Wrong PIN — ${pinResult.remaining} attempts left")
+                    SecurityOSPinRepository.clearAll()
                     // Send post-command to switch back to binary
                     if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
                         val postCmd = SecurityOSCommandMapper.pendingPostCommand
@@ -274,6 +282,7 @@ class SecurityOSCardReader : CardReader {
                 }
                 is PinVerifyResult.Blocked -> {
                     Log.e(TAG, "Card blocked — PUK required")
+                    SecurityOSPinRepository.clearAll()
                     if (commandType == SecurityOSCommandMapper.CommandType.GET_XPUB) {
                         val postCmd = SecurityOSCommandMapper.pendingPostCommand
                         if (postCmd != null) {
@@ -306,6 +315,33 @@ class SecurityOSCardReader : CardReader {
             }
         }
 
+        // 2b. Send Admin PIN verify before PurgeWallet (INS=0xFC)
+        val preAdminCmd = SecurityOSCommandMapper.pendingPreAdminCommand
+        if (preAdminCmd != null) {
+            SecurityOSCommandMapper.pendingPreAdminCommand = null
+            val adminCmdToSend = preAdminCmd
+            try {
+                Log.d(TAG, "Admin PIN verify: ${adminCmdToSend.joinToString("") { String.format("%02X", it) }}")
+                val adminResponse = nfcTag?.isoDep?.transceive(adminCmdToSend)
+                val adminSw = if (adminResponse != null && adminResponse.size >= 2) {
+                    (adminResponse[adminResponse.size - 2].toInt() and 0xFF) shl 8 or
+                        (adminResponse[adminResponse.size - 1].toInt() and 0xFF)
+                } else 0
+                Log.d(TAG, "Admin PIN verify response: SW=${String.format("%04X", adminSw)}")
+                if (adminSw != 0x9000) {
+                    Log.e(TAG, "Admin PIN verification failed: SW=${String.format("%04X", adminSw)}")
+                    SecurityOSPinRepository.clearAll()
+                    callback(CompletionResult.Failure(TangemSdkError.WrongAccessCode()))
+                    return
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Admin PIN verify failed: ${e.message}")
+                SecurityOSPinRepository.clearAll()
+                callback(CompletionResult.Failure(TangemSdkError.WrongAccessCode()))
+                return
+            }
+        }
+
         val rawResponse: ByteArray? = try {
             var response = nfcTag?.isoDep?.transceive(dataToSend)
             Log.d(TAG, "response: ${response?.joinToString("") { String.format("%02X", it) }}")
@@ -318,7 +354,7 @@ class SecurityOSCardReader : CardReader {
                     Log.d(TAG, "GET_XPUB returned 9C14 — auto-generating seed on card")
                     try {
                         // Verify PIN in TLV mode (card is already in TLV mode from pre-command)
-                        val pin = SecurityOSPinRepository.getPin()
+                        val pin = SecurityOSPinRepository.getUserPin()
                         val tlvData = byteArrayOf(0x10, pin.size.toByte()) + pin
                         val verifyApdu = byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, tlvData.size.toByte()) + tlvData
                         nfcTag?.isoDep?.transceive(verifyApdu)
@@ -387,15 +423,18 @@ class SecurityOSCardReader : CardReader {
     var isPinBlocked: Boolean = false
         private set
 
+    private var needsAdminPin = false
+
     private fun verifyPin(): PinVerifyResult {
         try {
-            val pin = SecurityOSPinRepository.getPin()
+            val pin = if (needsAdminPin) SecurityOSPinRepository.getAdminPin() else SecurityOSPinRepository.getUserPin()
+            val p1: Byte = if (needsAdminPin) 0x01 else 0x00
             // Use TLV format when in TLV mode (after SET_PROTOCOL), binary format otherwise
             val verifyApdu = if (SecurityOSCommandMapper.isTlvMode) {
                 val tlvData = byteArrayOf(0x10, pin.size.toByte()) + pin
-                byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, tlvData.size.toByte()) + tlvData
+                byteArrayOf(0xB0.toByte(), 0x42, p1, 0x00, tlvData.size.toByte()) + tlvData
             } else {
-                byteArrayOf(0xB0.toByte(), 0x42, 0x00, 0x00, pin.size.toByte()) + pin
+                byteArrayOf(0xB0.toByte(), 0x42, p1, 0x00, pin.size.toByte()) + pin
             }
             val response = nfcTag?.isoDep?.transceive(verifyApdu)
             val sw = if (response != null && response.size >= 2) {

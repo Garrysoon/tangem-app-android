@@ -36,4 +36,7 @@ interface CryptoCurrencyDao {
         """,
     )
     suspend fun countByUserWalletId(userWalletId: UserWalletId): Int
+
+    @Query("DELETE FROM CryptoCurrencyEntity WHERE userWalletId = :userWalletId")
+    suspend fun deleteByWalletId(userWalletId: UserWalletId)
 }

@@ -1543,6 +1543,9 @@
   <string name="settings_card_settings_footer">Подготовьтесь к сканированию кольца или карты, которую вы хотите настроить.</string>
   <string name="settings_forget_wallet">Забыть кошелек</string>
   <string name="settings_forget_wallet_footer">Это приведет к удалению кошелька из приложения. Сам кошелек можно добавить снова.</string>
+  <string name="settings_remove_wallet_from_card">Удалить кошелёк с карты</string>
+  <string name="settings_remove_wallet_from_card_footer">Это навсегда удалит кошелёк с карты SecurityOS</string>
+  <string name="user_wallet_list_remove_from_card_prompt">Это навсегда удалит кошелёк с карты. Вам нужно будет приложить карту и ввести PIN для подтверждения.</string>
   <string name="settings_upgrade_banner_advantage_feature_title">Прост в использовании</string>
   <string name="settings_upgrade_banner_description">Хранит вашу криптовалюту в безопасности и офлайн. Тонкий, как кредитная карта, надежнее банковского сейфа.</string>
   <string name="settings_upgrade_banner_seed_phrase_feature_title">Без seed-фразы</string>

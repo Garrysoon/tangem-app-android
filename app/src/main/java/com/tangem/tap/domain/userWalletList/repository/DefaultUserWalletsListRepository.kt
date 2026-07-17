@@ -58,6 +58,7 @@ internal class DefaultUserWalletsListRepository(
     private val hotWalletAccessCodeAttemptsRepository: HotWalletAccessCodeAttemptsRepository,
     private val tangemHotSdk: TangemHotSdk,
     private val trackingContextProxy: TrackingContextProxy,
+    private val walletRoomDbCleanupHelper: WalletRoomDbCleanupHelper,
     private val analyticsEventHandler: AnalyticsEventHandler,
     private val hotWalletRepository: HotWalletRepository,
     private val mobileWalletPromoRepository: MobileWalletPromoRepository,
@@ -208,6 +209,7 @@ internal class DefaultUserWalletsListRepository(
     }
 
     override suspend fun delete(userWalletIds: List<UserWalletId>): Either<DeleteWalletError, Unit> = either {
+        android.util.Log.d("WalletDelete", "delete() called with ${userWalletIds.size} wallets")
         if (userWalletIds.isEmpty()) return Unit.right()
 
         publicInformationRepository.delete(userWalletIds)
@@ -220,6 +222,13 @@ internal class DefaultUserWalletsListRepository(
             }
 
         userWalletEncryptionKeysRepository.delete(userWalletIds)
+
+        // Clean up Room DB data
+        android.util.Log.d("WalletDelete", "Cleaning Room DB for ${userWalletIds.size} wallets")
+        for (walletId in userWalletIds) {
+            walletRoomDbCleanupHelper.cleanup(walletId)
+        }
+        android.util.Log.d("WalletDelete", "Room DB cleanup done")
 
         removeHotWalletsFromSDKAndRepos(userWalletIds)
 

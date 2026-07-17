@@ -1,6 +1,11 @@
 package com.tangem.tap.data
 
+import android.text.InputType
 import android.util.Log
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import com.tangem.Message
 import com.tangem.SessionViewDelegate
 import com.tangem.ViewDelegateMessage
@@ -12,9 +17,11 @@ import com.tangem.common.CompletionResult
 import com.tangem.common.core.Config
 import com.tangem.common.core.ProductType
 import com.tangem.common.core.TangemError
+import com.tangem.common.core.TangemSdkError
 import com.tangem.common.extensions.VoidCallback
 import com.tangem.operations.resetcode.ResetCodesViewDelegate
 import com.tangem.operations.resetcode.ResetCodesViewState
+import com.tangem.tap.ForegroundActivityObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -83,9 +90,78 @@ class SecurityOSSessionViewDelegate : SessionViewDelegate {
         cardId: String?,
         callback: CompletionCallback<String>,
     ) {
-        Log.d(TAG, "Request user code: $type, cardId=$cardId")
-        val pin = SecurityOSPinRepository.getPin()
-        callback(CompletionResult.Success(String(pin)))
+        Log.d(TAG, "Request user code: $type, isFirstAttempt=$isFirstAttempt, cardId=$cardId")
+
+        val dialogTitle = when (type) {
+            UserCodeType.AccessCode -> "Enter User PIN"
+            UserCodeType.Passcode -> "Enter Admin PIN"
+        }
+        val hint = when (type) {
+            UserCodeType.AccessCode -> "User PIN"
+            UserCodeType.Passcode -> "Admin PIN"
+        }
+
+        val activity = ForegroundActivityObserver.foregroundActivity
+        if (activity == null || activity.isDestroyed || activity.isFinishing) {
+            Log.w(TAG, "No foreground activity, using default PIN")
+            val pin = when (type) {
+                UserCodeType.AccessCode -> SecurityOSPinRepository.getUserPin()
+                UserCodeType.Passcode -> SecurityOSPinRepository.getAdminPin()
+            }
+            callback(CompletionResult.Success(String(pin)))
+            return
+        }
+
+        activity.runOnUiThread {
+            val editText = EditText(activity).apply {
+                this.hint = hint
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                setSelection(0)
+                val dp16 = (16 * activity.resources.displayMetrics.density).toInt()
+                setPadding(dp16, dp16, dp16, dp16)
+            }
+
+            val container = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                val dp8 = (8 * activity.resources.displayMetrics.density).toInt()
+                setPadding(dp8, 0, dp8, 0)
+                addView(editText)
+            }
+
+            if (!isFirstAttempt) {
+                val errorText = TextView(activity).apply {
+                    text = "Wrong PIN. Try again."
+                    setTextColor(0xFFFF4444.toInt())
+                    val dp16 = (16 * activity.resources.displayMetrics.density).toInt()
+                    setPadding(dp16, 0, dp16, dp16)
+                }
+                container.addView(errorText, 0)
+            }
+
+            val dialog = AlertDialog.Builder(activity)
+                .setTitle(dialogTitle)
+                .setView(container)
+                .setCancelable(false)
+                .setPositiveButton("OK") { _, _ ->
+                    val pin = editText.text.toString().trim()
+                    if (pin.isNotEmpty()) {
+                        when (type) {
+                            UserCodeType.AccessCode -> SecurityOSPinRepository.setUserPin(pin.toByteArray())
+                            UserCodeType.Passcode -> SecurityOSPinRepository.setAdminPin(pin.toByteArray())
+                        }
+                        callback(CompletionResult.Success(pin))
+                    } else {
+                        callback(CompletionResult.Failure(TangemSdkError.InvalidParams()))
+                    }
+                }
+                .setNegativeButton("Cancel") { _, _ ->
+                    callback(CompletionResult.Failure(TangemSdkError.UserCancelled()))
+                }
+                .create()
+
+            dialog.show()
+            editText.requestFocus()
+        }
     }
 
     override fun showWelcomeBackWarning(callback: CompletionCallback<Unit>) {
