@@ -72,7 +72,20 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
         cryptoCurrencyList: List<CryptoCurrency>,
         filterProviderTypes: List<ExpressProviderType>,
         swapTxType: SwapTxType,
-    ): List<SwapPairModel> = emptyList()
+    ): List<SwapPairModel> = withContext(coroutineDispatcher.default) {
+        val p = providers.filter { it.type in filterProviderTypes }
+        val allDexAddresses = getAllDexAddresses()
+        cryptoCurrencyList.mapNotNull { currency ->
+            val addr = addr(currency)
+            if (addr.lowercase() in allDexAddresses) {
+                SwapPairModel(
+                    from = CryptoCurrencyStatus(currency = currency, value = CryptoCurrencyStatus.Loading),
+                    to = CryptoCurrencyStatus(currency = initialCurrency, value = CryptoCurrencyStatus.Loading),
+                    providers = p,
+                )
+            } else null
+        }
+    }
 
     override suspend fun getSwapQuote(
         userWallet: UserWallet,
@@ -211,6 +224,22 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
     private data class SwapTxData(
         val to: String, val data: String, val value: String, val gas: BigInteger, val allowance: String,
     )
+
+    private fun getAllDexAddresses(): Set<String> {
+        val addresses = mutableSetOf<String>()
+        for (list in listOf(DEX_TOKENS_ETHEREUM, DEX_TOKENS_ARBITRUM, DEX_TOKENS_OPTIMISM, DEX_TOKENS_BASE, DEX_TOKENS_POLYGON, DEX_TOKENS_BSC)) {
+            addresses.addAll(list.map { it.lowercase() })
+        }
+        addresses.add(NATIVE.lowercase())
+        return addresses
+    }
+
+    private val DEX_TOKENS_ETHEREUM = listOf("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "0xdAC17F958D2ee523a2206206994597C13D831ec7", "0x6B175474E89094C44Da98b954EedeAC495271d0F", "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599")
+    private val DEX_TOKENS_ARBITRUM = listOf("0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8", "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f", "0x912CE59144191C1204E64559FE8253a0e49E6548")
+    private val DEX_TOKENS_OPTIMISM = listOf("0x4200000000000000000000000000000000000006", "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", "0x68f180fcCe6836688e9084f035309E29Bf0A2095", "0x4200000000000000000000000000000000000042")
+    private val DEX_TOKENS_BASE = listOf("0x4200000000000000000000000000000000000006", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA", "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c")
+    private val DEX_TOKENS_POLYGON = listOf("0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", "0x1BFD67037B42CF73acF2047067bd4F2C47D9BfD6")
+    private val DEX_TOKENS_BSC = listOf("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", "0x55d398326f99059fF775485246999027B3197955", "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c")
 
     private fun chainId(chain: String): Int = CHAIN_IDS[chain.lowercase()] ?: 1
 }
