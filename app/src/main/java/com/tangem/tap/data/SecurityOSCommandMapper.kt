@@ -94,8 +94,6 @@ object SecurityOSCommandMapper {
     private var cachedAuthentikey: ByteArray? = null
     private var cachedCardId: ByteArray? = null
     private var cachedSignatureCount: Int = 0
-    private var cachedCardId: ByteArray? = null
-    private var cachedSignatureCount: Int = 0
     var pendingPreCommand: ByteArray? = null
     var pendingPostCommand: ByteArray? = null
     var pendingPreAdminCommand: ByteArray? = null
@@ -777,36 +775,12 @@ object SecurityOSCommandMapper {
         return wrapWithSw(tlvList)
     }
 
-    private fun buildRealAttestResponse(): ByteArray {
-        val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
-        try {
-            val challenge = ByteArray(16)
-            java.security.SecureRandom().nextBytes(challenge)
-            val apdu = byteArrayOf(SOS_CLA, 0xF3.toByte(), 0x00, 0x00, 0x10) + challenge
-            val response = SecurityOSCardReader.sendApdu(apdu)
-            if (response.size > 2) {
-                val sw1 = response[response.size - 2].toInt() and 0xFF
-                val sw2 = response[response.size - 1].toInt() and 0xFF
-                if (sw1 == 0x90 && sw2 == 0x00) {
-                    val data = response.copyOfRange(0, response.size - 2)
-                    if (data.size >= 16) {
-                        val salt = data.copyOfRange(0, 16)
-                        val sig = if (data.size > 16) data.copyOfRange(16, data.size) else ByteArray(64)
-                        tlvList.add(buildTlv(0x17, salt))
-                        tlvList.add(buildTlv(0x04, sig))
-                        Log.d(TAG, "Attestation: real signature B")
-                        return wrapWithSw(tlvList)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Attestation error: ")
-        }
+    internal fun buildRealAttestResponse(): ByteArray {
+        Log.d(TAG, "AttestCardKey: skip (mapper intercept)")
         return buildAttestSkipResponse()
     }
 
-    private fun buildAttestSkipResponse(): ByteArray {
+    internal fun buildAttestSkipResponse(): ByteArray {
         val tlvList = mutableListOf<ByteArray>()
         tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
         tlvList.add(buildTlv(0x17, ByteArray(16)))

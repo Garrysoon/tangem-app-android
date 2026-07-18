@@ -1,4 +1,4 @@
-﻿{
+{
 	"amplitudeApiKey": "",
 	"amplitudeApiKeyDev": "",
 	"appsFlyer": {
@@ -21,34 +21,34 @@
 		"ethereum": {
 			"jsonRpc": "https://eth.llamarpc.com"
 		},
-		"ethereumClassic":  {
+		"ethereumClassic": {
 			"jsonRpc": ""
 		},
 		"fantom": {
 			"jsonRpc": ""
 		},
-		"rsk":  {
+		"rsk": {
 			"jsonRpc": ""
 		},
 		"bsc": {
 			"jsonRpc": ""
 		},
-		"polygon":  {
+		"polygon": {
 			"jsonRpc": ""
 		},
 		"xdai": {
 			"jsonRpc": ""
 		},
-		"cronos":  {
+		"cronos": {
 			"jsonRpc": ""
 		},
-		"solana":  {
+		"solana": {
 			"jsonRpc": ""
 		},
-		"ton":  {
+		"ton": {
 			"jsonRpc": ""
 		},
-		"tron":  {
+		"tron": {
 			"rest": ""
 		},
 		"cosmos-hub": {
@@ -78,9 +78,6 @@
 		"bitcoin": {
 			"blockBookRest": "https://blockstream.info/api/",
 			"jsonRpc": ""
-		},
-		"ethereum": {
-			"jsonRpc": "https://eth.llamarpc.com"
 		},
 		"aptos": {
 			"rest": ""
@@ -134,14 +131,14 @@
 		"tezos": {
 			"rest": ""
 		},
-        "monad": {
-            "rest": ""
+		"monad": {
+			"rest": ""
 		},
-        "stellar": {
-            "rest": ""
+		"stellar": {
+			"rest": ""
 		},
-        "berachain": {
-            "rest": ""
+		"berachain": {
+			"rest": ""
 		}
 	},
 	"kaspaSecondaryApiUrl": "",
@@ -200,23 +197,23 @@
 	"bffStaticToken": "",
 	"bffStaticTokenDev": "",
 	"p2pApiKey": {
-        "mainnet": "",
-        "hoodi": ""
-    },
+		"mainnet": "",
+		"hoodi": ""
+	},
 	"customerIO": {
 		"iosApiKey": "",
 		"androidApiKey": ""
-    },
+	},
 	"surveySparrow": {
-        "clientID": "",
-        "clientSecret": "",
-        "apiKey": "",
+		"clientID": "",
+		"clientSecret": "",
+		"apiKey": "",
 		"swapRating": {
 			"surveyId": "",
 			"ratingQuestionId": "",
 			"feedbackQuestionId": ""
 		}
-    },
+	},
 	"gaslessTxApiKey": "",
 	"gaslessTxApiKeyDev": "",
 	"alchemyApiKey": "",
