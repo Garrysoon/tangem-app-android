@@ -92,6 +92,8 @@ object SecurityOSCommandMapper {
 
     var lastCommandType: CommandType = CommandType.UNKNOWN
     private var cachedAuthentikey: ByteArray? = null
+    private var cachedCardId: ByteArray? = null
+    private var cachedCardId: ByteArray? = null
     var pendingPreCommand: ByteArray? = null
     var pendingPostCommand: ByteArray? = null
     var pendingPreAdminCommand: ByteArray? = null
@@ -141,11 +143,14 @@ object SecurityOSCommandMapper {
                 Log.d(TAG, "ReadFileData → fake empty response")
                 buildFakeSuccessResponse()
             }
-            TANGEM_INS_ATTEST_CARD_KEY,
+            TANGEM_INS_ATTEST_CARD_KEY -> {
+                Log.d(TAG, "AttestCardKey → real attestation")
+                buildRealAttestResponse()
+            }
             TANGEM_INS_ATTEST_CARD_UNIQUENESS,
             TANGEM_INS_ATTEST_CARD_FIRMWARE -> {
-                Log.d(TAG, "Attest bypass → fake response")
-                null // fake response handled in SecurityOSCardReader
+                Log.d(TAG, "AttestUniqueness/Firmware → skip")
+                buildAttestSkipResponse()
             }
             else -> null
         }
@@ -285,19 +290,19 @@ object SecurityOSCommandMapper {
     fun buildFakePurgeWalletResponse(): ByteArray {
         // PurgeWallet returns only SW=9000, but SDK expects TLV with CardId
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
         return wrapWithSw(tlvList)
     }
 
     fun buildFakeSuccessResponse(): ByteArray {
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
         return wrapWithSw(tlvList)
     }
 
     private fun buildFakeUserDataResponse(): ByteArray {
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
         tlvList.add(buildTlv(0x2A.toByte(), ByteArray(0))) // UserData (empty)
         tlvList.add(buildTlv(0x2B.toByte(), ByteArray(0))) // UserProtectedData (empty)
         tlvList.add(byteArrayOf(0x2C, 0x04, 0x00, 0x00, 0x00, 0x00)) // UserCounter
@@ -544,11 +549,34 @@ object SecurityOSCommandMapper {
         val cardDataTlv = mutableListOf<ByteArray>()
         val pubkey = cachedAuthentikey ?: ByteArray(65)
 
-        // Parse is_seeded from GET_STATUS response (byte 9 = is_seeded flag)
+        // Parse SecurityOS GET_STATUS: 14-byte header + TLV extensions
         val isSeeded = if (data.size > 9) data[9].toInt() != 0 else false
+        Log.d(TAG, "GET_STATUS: is_seeded=$isSeeded, data.size=${data.size}")
+
+        // Parse firmware version from TLV extensions (0xE0=major, 0xE1=minor, 0xE2=patch)
+        var fwMajor = 1; var fwMinor = 0; var fwPatch = 0
+        var i = 14
+        while (i + 2 <= data.size) {
+            val tag = data[i]; i++
+            val len = data[i].toInt() and 0xFF; i++
+            if (i + len > data.size) break
+            when (tag) {
+                0xE0.toByte() -> fwMajor = data[i].toInt() and 0xFF
+                0xE1.toByte() -> fwMinor = data[i].toInt() and 0xFF
+                0xE2.toByte() -> fwPatch = data[i].toInt() and 0xFF
+            }
+            i += len
+        }
+        Log.d(TAG, "GET_STATUS: firmware=$fwMajor.$fwMinor.$fwPatch")
+
+        // Generate deterministic Card ID from authentikey (SHA-256 first 8 bytes)
+        val cardId = if (pubkey.size >= 33) {
+            java.security.MessageDigest.getInstance("SHA-256").digest(pubkey).copyOfRange(0, 8)
+        } else ByteArray(8)
+        cachedCardId = cardId
         Log.d(TAG, "GET_STATUS: is_seeded=$isSeeded")
 
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))         // 0x01
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))         // 0x01
         // Status: Empty (1) if no seed → SDK sees card.wallets.isEmpty() → offers Create Wallet
         // Status: Loaded (2) if seeded → SDK reads wallet data
         val statusByte = if (isSeeded) 0x02.toByte() else 0x01.toByte()
@@ -556,13 +584,13 @@ object SecurityOSCommandMapper {
         tlvList.add(buildTlv(TAG_CARD_PUBLIC_KEY, pubkey))        // 0x03
         tlvList.add(buildTlv(0x05, "secp256k1".toByteArray()))   // 0x05 CurveId
         tlvList.add(byteArrayOf(0x07, 0x01, 0x03))               // 0x07 SigningMethod=ECDSA
-        tlvList.add(byteArrayOf(0x0A, 0x04, 0x00, 0x20, 0x00, 0x00)) // 0x0A SettingsMask
-        tlvList.add(buildTlv(0x20, "TANGEM SDK".toByteArray()))  // 0x20 ManufacturerName
+        tlvList.add(byteArrayOf(0x0A, 0x04, 0x00, 0x20, 0x01, 0x08)) // 0x0A SettingsMask: IsReusable|IsHDWalletAllowed|IsPackaged
+        tlvList.add(buildTlv(0x20, "SecurityOS".toByteArray()))  // 0x20 ManufacturerName
         tlvList.add(buildTlv(0x30, pubkey))                       // 0x30 IssuerPublicKey
         // WalletsCount: 0 if no seed (SDK will offer Create Wallet), 1 if seeded
         val walletsCount = if (isSeeded) 0x01.toByte() else 0x00.toByte()
         tlvList.add(byteArrayOf(0x66, 0x01, walletsCount))       // 0x66 WalletsCount
-        tlvList.add(buildTlv(TAG_FIRMWARE, "4.0.0r".toByteArray())) // Firmware
+        tlvList.add(buildTlv(TAG_FIRMWARE, "$fwMajor.$fwMinor.${fwPatch}r".toByteArray())) // Firmware
         tlvList.add(byteArrayOf(0x0F, 0x02, 0x64, 0x00))        // 0x0F Health
 
         // CardData nested TLV (0x0C)
@@ -642,7 +670,7 @@ object SecurityOSCommandMapper {
         // Build Tangem TLV response — must match WalletDeserializer expectations:
         // Required tags: Status(0x02), WalletPublicKey(0x60), CurveId(0x05), WalletIndex(0x65)
         // Optional tags: WalletHDChain(0x6B), WalletSignedHashes(0x63), SettingsMask(0x0A)
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))          // 0x01 CardId
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))          // 0x01 CardId
         tlvList.add(byteArrayOf(0x02, 0x01, 0x02))               // 0x02 Status = Loaded (2)
         tlvList.add(buildTlv(TAG_WALLET_PUBLIC_KEY, pubkey))      // 0x60 pubkey (33B)
         tlvList.add(buildTlv(TAG_WALLET_HD_CHAIN, chainCode))    // 0x6B chaincode (32B)
@@ -655,7 +683,7 @@ object SecurityOSCommandMapper {
 
     private fun convertSignHashResponse(data: ByteArray): ByteArray {
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
         tlvList.add(buildTlv(TAG_WALLET_SIGNATURE, data))
         tlvList.add(byteArrayOf(0x63, 0x04, 0x00, 0x00, 0x00, 0x01)) // SignedHashes
         return wrapWithSw(tlvList)
@@ -664,7 +692,7 @@ object SecurityOSCommandMapper {
     private fun convertSchnorrSignResponse(data: ByteArray): ByteArray {
         Log.d(TAG, "SCHNORR response: ${data.size}B")
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
         tlvList.add(buildTlv(TAG_WALLET_SIGNATURE, data))
         tlvList.add(byteArrayOf(0x63, 0x04, 0x00, 0x00, 0x00, 0x01))
         return wrapWithSw(tlvList)
@@ -678,7 +706,7 @@ object SecurityOSCommandMapper {
     private fun convertImportSeedResponse(data: ByteArray): ByteArray {
         Log.d(TAG, "IMPORT_SEED response: ${data.size}B")
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
 
         // Parse TLV response: 0x60=pubkey, 0x61=selfsig
         val parsed = parseTlvList(data)
@@ -695,7 +723,7 @@ object SecurityOSCommandMapper {
 
     private fun convertGetAuthentikeyResponse(data: ByteArray): ByteArray {
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
         if (data.isNotEmpty()) {
             cachedAuthentikey = data
             tlvList.add(buildTlv(TAG_CARD_PUBLIC_KEY, data))
@@ -711,7 +739,7 @@ object SecurityOSCommandMapper {
     private fun convertWalletsListResponse(data: ByteArray): ByteArray {
         Log.d(TAG, "WALLETS_LIST response: ${data.size}B")
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
 
         if (data.isNotEmpty()) {
             // Authentikey is first 33 bytes (compressed secp256k1 pubkey)
@@ -733,13 +761,44 @@ object SecurityOSCommandMapper {
         return wrapWithSw(tlvList)
     }
 
-    fun buildAttestFakeResponse(): ByteArray {
+    private fun buildRealAttestResponse(): ByteArray {
         val tlvList = mutableListOf<ByteArray>()
-        tlvList.add(buildTlv(TAG_CARD_ID, ByteArray(8)))
-        tlvList.add(buildTlv(0x17, ByteArray(16))) // Salt
-        tlvList.add(buildTlv(0x04, ByteArray(64))) // CardSignature
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
+        try {
+            val challenge = ByteArray(16)
+            java.security.SecureRandom().nextBytes(challenge)
+            val apdu = byteArrayOf(SOS_CLA, 0xF3.toByte(), 0x00, 0x00, 0x10) + challenge
+            val response = SecurityOSCardReader.sendApdu(apdu)
+            if (response.size > 2) {
+                val sw1 = response[response.size - 2].toInt() and 0xFF
+                val sw2 = response[response.size - 1].toInt() and 0xFF
+                if (sw1 == 0x90 && sw2 == 0x00) {
+                    val data = response.copyOfRange(0, response.size - 2)
+                    if (data.size >= 16) {
+                        val salt = data.copyOfRange(0, 16)
+                        val sig = if (data.size > 16) data.copyOfRange(16, data.size) else ByteArray(64)
+                        tlvList.add(buildTlv(0x17, salt))
+                        tlvList.add(buildTlv(0x04, sig))
+                        Log.d(TAG, "Attestation: real signature B")
+                        return wrapWithSw(tlvList)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Attestation error: ")
+        }
+        return buildAttestSkipResponse()
+    }
+
+    private fun buildAttestSkipResponse(): ByteArray {
+        val tlvList = mutableListOf<ByteArray>()
+        tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
+        tlvList.add(buildTlv(0x17, ByteArray(16)))
+        tlvList.add(buildTlv(0x04, ByteArray(64)))
         return wrapWithSw(tlvList)
     }
+
+
 
     // ===== TLV Utilities =====
 
