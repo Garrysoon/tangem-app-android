@@ -93,7 +93,9 @@ object SecurityOSCommandMapper {
     var lastCommandType: CommandType = CommandType.UNKNOWN
     private var cachedAuthentikey: ByteArray? = null
     private var cachedCardId: ByteArray? = null
+    private var cachedSignatureCount: Int = 0
     private var cachedCardId: ByteArray? = null
+    private var cachedSignatureCount: Int = 0
     var pendingPreCommand: ByteArray? = null
     var pendingPostCommand: ByteArray? = null
     var pendingPreAdminCommand: ByteArray? = null
@@ -569,6 +571,18 @@ object SecurityOSCommandMapper {
         }
         Log.d(TAG, "GET_STATUS: firmware=$fwMajor.$fwMinor.$fwPatch")
 
+        // Parse signature counter from TLV tag 0x63 (4 bytes)
+        var j = 14
+        while (j + 2 <= data.size) {
+            val tag = data[j]; j++
+            val len2 = data[j].toInt() and 0xFF; j++
+            if (j + len2 > data.size) break
+            if (tag == 0x63.toByte() && len2 == 4) {
+                cachedSignatureCount = ((data[j].toInt() and 0xFF) shl 24) or ((data[j+1].toInt() and 0xFF) shl 16) or ((data[j+2].toInt() and 0xFF) shl 8) or (data[j+3].toInt() and 0xFF)
+            }
+            j += len2
+        }
+
         // Generate deterministic Card ID from authentikey (SHA-256 first 8 bytes)
         val cardId = if (pubkey.size >= 33) {
             java.security.MessageDigest.getInstance("SHA-256").digest(pubkey).copyOfRange(0, 8)
@@ -676,7 +690,7 @@ object SecurityOSCommandMapper {
         tlvList.add(buildTlv(TAG_WALLET_HD_CHAIN, chainCode))    // 0x6B chaincode (32B)
         tlvList.add(buildTlv(0x05, "secp256k1".toByteArray()))   // 0x05 CurveId
         tlvList.add(byteArrayOf(0x65, 0x01, 0x00))               // 0x65 WalletIndex = 0
-        tlvList.add(byteArrayOf(0x63, 0x04, 0x00, 0x00, 0x00, 0x00)) // 0x63 SignedHashes = 0
+        tlvList.add(byteArrayOf(0x63, 0x04, ((cachedSignatureCount shr 24) and 0xFF).toByte(), ((cachedSignatureCount shr 16) and 0xFF).toByte(), ((cachedSignatureCount shr 8) and 0xFF).toByte(), (cachedSignatureCount and 0xFF).toByte())) // 0x63 SignedHashes
 
         return wrapWithSw(tlvList)
     }
@@ -685,7 +699,7 @@ object SecurityOSCommandMapper {
         val tlvList = mutableListOf<ByteArray>()
         tlvList.add(buildTlv(TAG_CARD_ID, cachedCardId ?: ByteArray(8)))
         tlvList.add(buildTlv(TAG_WALLET_SIGNATURE, data))
-        tlvList.add(byteArrayOf(0x63, 0x04, 0x00, 0x00, 0x00, 0x01)) // SignedHashes
+        val sc = cachedSignatureCount + 1; tlvList.add(byteArrayOf(0x63, 0x04, ((sc shr 24) and 0xFF).toByte(), ((sc shr 16) and 0xFF).toByte(), ((sc shr 8) and 0xFF).toByte(), (sc and 0xFF).toByte())) // 0x63 SignedHashes (after this sign)
         return wrapWithSw(tlvList)
     }
 
