@@ -604,7 +604,9 @@ object SecurityOSCommandMapper {
         // WalletsCount: 0 if no seed (SDK will offer Create Wallet), 1 if seeded
         val walletsCount = if (isSeeded) 0x01.toByte() else 0x00.toByte()
         tlvList.add(byteArrayOf(0x66, 0x01, walletsCount))       // 0x66 WalletsCount
-        tlvList.add(buildTlv(TAG_FIRMWARE, "$fwMajor.$fwMinor.${fwPatch}r".toByteArray())) // Firmware
+        // SDK requires firmware >= 4.0.0, cap parsed version
+        val sdkMajor = if (fwMajor < 4) 4 else fwMajor
+        tlvList.add(buildTlv(TAG_FIRMWARE, ("$sdkMajor.$fwMinor.${fwPatch}r").toByteArray())) // Firmware
         tlvList.add(byteArrayOf(0x0F, 0x02, 0x64, 0x00))        // 0x0F Health
 
         // CardData nested TLV (0x0C)
