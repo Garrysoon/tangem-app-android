@@ -306,8 +306,21 @@ internal class RaksaSwapRepository @Inject constructor(
     )
 
     private fun CryptoCurrency.toLeastTokenInfo(): LeastTokenInfo? {
-        // Map crypto currency to DEX token address
-        // This is simplified — in production would need proper network->chain mapping
-        return null // Will be implemented with proper token resolution
+        val contractAddress = when (this) {
+            is CryptoCurrency.Token -> contractAddress
+            is CryptoCurrency.Coin -> DexTokenList.NATIVE_TOKEN
+        }
+        val networkId = network.rawId
+        // Map network rawId to DEX chain name
+        val chainName = when {
+            networkId.contains("arbitrum", ignoreCase = true) -> "arbitrum"
+            networkId.contains("optimism", ignoreCase = true) -> "optimism"
+            networkId.contains("base", ignoreCase = true) -> "base"
+            networkId.contains("polygon", ignoreCase = true) || networkId.contains("matic", ignoreCase = true) -> "polygon"
+            networkId.contains("bsc", ignoreCase = true) || networkId.contains("bnb", ignoreCase = true) -> "bsc"
+            networkId.contains("ethereum", ignoreCase = true) || networkId == "1" -> "ethereum"
+            else -> return null
+        }
+        return LeastTokenInfo(contractAddress = contractAddress, network = chainName)
     }
 }
