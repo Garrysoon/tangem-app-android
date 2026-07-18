@@ -137,4 +137,10 @@ internal object ApiConfigsModule {
     fun provideAcrossConfig(): ApiConfig {
         return Across()
     }
+
+    @Provides
+    @IntoSet
+    fun provideThorchainConfig(): ApiConfig {
+        return Thorchain()
+    }
 }

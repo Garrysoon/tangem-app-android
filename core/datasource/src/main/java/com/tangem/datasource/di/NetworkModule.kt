@@ -14,6 +14,7 @@ import com.tangem.datasource.api.express.TangemExpressApi
 import com.tangem.datasource.api.raksa.RaksaApi
 import com.tangem.datasource.api.swap.AcrossBridgeApi
 import com.tangem.datasource.api.swap.KyberSwapApi
+import com.tangem.datasource.api.swap.ThorchainApi
 import com.tangem.datasource.api.swap.ParaswapApi
 import com.tangem.datasource.api.markets.TangemTechMarketsApi
 import com.tangem.datasource.api.moonpay.MoonPayApi
@@ -111,6 +112,18 @@ internal object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideThorchainApi(retrofitApiBuilder: RetrofitApiBuilder): ThorchainApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Thorchain,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = 30L,
+                connectTimeoutSeconds = 30L,
+                readTimeoutSeconds = 30L,
+            ),
+        )
+    }
+
     fun provideRaksaApi(retrofitApiBuilder: RetrofitApiBuilder): RaksaApi {
         return retrofitApiBuilder.build(
             apiConfigId = ApiConfig.ID.Raksa,

@@ -6,239 +6,30 @@ import arrow.core.right
 import com.tangem.domain.express.models.ExpressOperationType
 import com.tangem.domain.models.currency.CryptoCurrency
 import com.tangem.domain.models.wallet.UserWallet
-import com.tangem.domain.models.wallet.UserWalletId
 import com.tangem.datasource.api.swap.AcrossBridgeApi
 import com.tangem.datasource.api.swap.KyberSwapApi
 import com.tangem.datasource.api.swap.ParaswapApi
+import com.tangem.datasource.api.swap.ThorchainApi
 import com.tangem.datasource.api.swap.models.KyberBuildRequest
-import com.tangem.datasource.api.swap.models.KyberRouteSummary
 import com.tangem.datasource.api.swap.models.ParaswapTxRequest
-import com.tangem.feature.swap.DexTokenList
 import com.tangem.feature.swap.domain.api.SwapRepository
 import com.tangem.feature.swap.domain.models.ExpressDataError
 import com.tangem.feature.swap.domain.models.SwapAmount
 import com.tangem.feature.swap.domain.models.domain.*
+import com.tangem.domain.models.wallet.UserWalletId
 import com.tangem.utils.coroutines.CoroutineDispatcherProvider
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
 import java.math.BigInteger
-import java.math.MathContext
 import javax.inject.Inject
 
-/**
- * SwapRepository that calls DEX APIs directly (Paraswap + KyberSwap).
- * No intermediate backend required.
- */
 internal class RaksaSwapRepository @Inject constructor(
     private val paraswapApi: ParaswapApi,
     private val kyberSwapApi: KyberSwapApi,
     private val acrossBridgeApi: AcrossBridgeApi,
+    private val thorchainApi: ThorchainApi,
     private val coroutineDispatcher: CoroutineDispatcherProvider,
 ) : SwapRepository {
-
-    override suspend fun getPairs(
-        userWallet: UserWallet,
-        initialCurrency: LeastTokenInfo,
-        currencyList: List<CryptoCurrency>,
-    ): PairsWithProviders = getPairsOnly(userWallet, initialCurrency, currencyList)
-
-    override suspend fun getPairsOnly(
-        userWallet: UserWallet,
-        initialCurrency: LeastTokenInfo,
-        currencyList: List<CryptoCurrency>,
-        isIgnoreExpress: Boolean,
-    ): PairsWithProviders = withContext(coroutineDispatcher.io) {
-        val providers = listOf(
-            createDexProvider("paraswap", "Paraswap"),
-            createDexProvider("kyberswap", "KyberSwap"),
-        )
-        // Build local pairs from currencyList
-        val pairs = currencyList.mapNotNull { currency ->
-            val leastToken = currency.toLeastTokenInfo() ?: return@mapNotNull null
-            SwapPairLeast(
-                from = initialCurrency,
-                to = leastToken,
-                providers = providers,
-            )
-        }
-        PairsWithProviders(pairs = pairs, allProviders = providers)
-    }
-
-    override suspend fun findBestQuote(
-        userWallet: UserWallet,
-        fromContractAddress: String,
-        fromNetwork: String,
-        toContractAddress: String,
-        toNetwork: String,
-        fromAmount: String,
-        fromDecimals: Int,
-        toDecimals: Int,
-        providerId: String,
-        rateType: RateType,
-    ): Either<ExpressDataError, QuoteModel> = withContext(coroutineDispatcher.io) {
-        // Check if both tokens are on the same supported chain
-        if (!DexTokenList.isChainSupported(fromNetwork) || !DexTokenList.isChainSupported(toNetwork)) {
-            return@withContext ExpressDataError.UnknownError().left()
-        }
-        // Cross-chain not supported by DEX
-        if (fromNetwork.lowercase() != toNetwork.lowercase()) {
-            return@withContext ExpressDataError.UnknownError().left()
-        }
-        try {
-            // Normalize native token address: "0" or empty -> NATIVE_TOKEN
-            val safeFromAddr = if (fromContractAddress.isBlank() || fromContractAddress == "0" || fromContractAddress == "0x") DexTokenList.NATIVE_TOKEN else fromContractAddress
-            val safeToAddr = if (toContractAddress.isBlank() || toContractAddress == "0" || toContractAddress == "0x") DexTokenList.NATIVE_TOKEN else toContractAddress
-            val rawAmount = fromAmount
-            val results = mutableListOf<DexResult>()
-
-            // Paraswap
-            try {
-                val resp = paraswapApi.getPrices(
-                    srcToken = safeFromAddr,
-                    destToken = safeToAddr,
-                    amount = rawAmount,
-                    srcDecimals = fromDecimals,
-                    destDecimals = toDecimals,
-                    network = toChainId(fromNetwork),
-                )
-                val route = resp.priceRoute
-                if (route != null) {
-                    results.add(DexResult(
-                        source = "paraswap",
-                        amountOutRaw = route.destAmount,
-                        gas = null,
-                        allowanceContract = route.tokenTransferProxy,
-                    ))
-                }
-            } catch (_: Exception) {}
-
-            // KyberSwap
-            try {
-                val slug = DexTokenList.kyberChainSlugs[fromNetwork.lowercase()] ?: return@withContext ExpressDataError.UnknownError().left()
-                val resp = kyberSwapApi.getRoutes(slug, fromContractAddress, toContractAddress, rawAmount)
-                val summary = resp.data?.routeSummary
-                if (resp.code == 0 && summary != null) {
-                    results.add(DexResult(
-                        source = "kyberswap",
-                        amountOutRaw = summary.amountOut,
-                        gas = summary.gas?.toLongOrNull(),
-                        allowanceContract = null,
-                    ))
-                }
-            } catch (_: Exception) {}
-
-            if (results.isEmpty()) {
-                return@withContext ExpressDataError.UnknownError().left()
-            }
-
-            val best = results.maxByOrNull { it.amountOutRaw.toBigDecimalOrNull() ?: BigDecimal.ZERO }
-                ?: results.first()
-            val amountOut = rawToAmount(best.amountOutRaw, toDecimals)
-
-            QuoteModel(
-                toTokenAmount = SwapAmount(amountOut, toDecimals),
-                allowanceContract = best.allowanceContract,
-                txType = ExpressTxType.SWAP,
-            ).right()
-        } catch (e: Exception) {
-            ExpressDataError.UnknownError().left()
-        }
-    }
-    override suspend fun getExchangeData(
-        userWallet: UserWallet,
-        fromContractAddress: String,
-        fromNetwork: String,
-        toContractAddress: String,
-        fromAddress: String,
-        toNetwork: String,
-        fromAmount: String,
-        fromDecimals: Int,
-        toDecimals: Int,
-        providerId: String,
-        rateType: RateType,
-        toAddress: String,
-        expressOperationType: ExpressOperationType,
-        refundAddress: String?,
-        refundExtraId: String?,
-        toExtraId: String?,
-    ): Either<ExpressDataError, SwapDataModel> = withContext(coroutineDispatcher.io) {
-        // Cross-chain: build Across bridge tx
-        if (fromNetwork.lowercase() != toNetwork.lowercase()) {
-            val acrossTx = buildAcrossBridgeTx(fromContractAddress, fromNetwork, toContractAddress, toNetwork, fromAmount, fromDecimals, toDecimals, fromAddress, toAddress)
-            val amountOut = rawToAmount(acrossTx.amountOutRaw.ifEmpty { fromAmount }, toDecimals)
-            val fromAmountBD = fromAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO
-            return@withContext SwapDataModel(
-                toTokenAmount = SwapAmount(amountOut, toDecimals),
-                transaction = ExpressTransactionModel.DEX(
-                    fromAmount = SwapAmount(fromAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO, fromDecimals),
-                    toAmount = SwapAmount(amountOut, toDecimals),
-                    txValue = acrossTx.value, txId = "", txTo = acrossTx.to,
-                    txExtraId = null, txFrom = fromAddress, txData = acrossTx.data,
-                    otherNativeFeeWei = null, gas = acrossTx.gas,
-                    allowanceContract = acrossTx.allowance,
-                ),
-            ).right()
-        }
-        // Same-chain: check chain support
-        if (!DexTokenList.isChainSupported(fromNetwork)) {
-            return@withContext ExpressDataError.UnknownError().left()
-        }
-        if (fromNetwork.lowercase() != toNetwork.lowercase()) {
-            return@withContext ExpressDataError.UnknownError().left()
-        }
-        try {
-            val rawAmount = fromAmount
-            val tx = when (providerId.lowercase()) {
-                "paraswap" -> buildParaswapTx(fromContractAddress, toContractAddress, rawAmount, fromDecimals, toDecimals, fromNetwork, fromAddress, toAddress)
-                "kyberswap" -> buildKyberTx(fromContractAddress, toContractAddress, rawAmount, fromNetwork, fromAddress, toAddress)
-                else -> throw RuntimeException("Unsupported DEX: $providerId")
-            }
-            val amountOut = rawToAmount(tx.amountOutRaw, toDecimals)
-            val model = SwapDataModel(
-                toTokenAmount = SwapAmount(amountOut, toDecimals),
-                transaction = ExpressTransactionModel.DEX(
-                    fromAmount = SwapAmount(fromAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO, fromDecimals),
-                    toAmount = SwapAmount(amountOut, toDecimals),
-                    txValue = tx.value,
-                    txId = "",
-                    txTo = tx.to,
-                    txExtraId = null,
-                    txFrom = fromAddress,
-                    txData = tx.data,
-                    otherNativeFeeWei = null,
-                    gas = tx.gas?.toBigInteger(),
-                    allowanceContract = tx.allowanceTarget,
-                ),
-            )
-            model.right()
-        } catch (e: Exception) {
-            ExpressDataError.UnknownError().left()
-        }
-    }
-
-    override suspend fun getExchangeStatus(
-        userWallet: UserWallet?,
-        userWalletId: UserWalletId,
-        txId: String,
-    ): Either<UnknownError, ExchangeStatusModel> = UnknownError().left()
-
-    override suspend fun exchangeSent(
-        userWallet: UserWallet,
-        txId: String,
-        fromNetwork: String,
-        fromAddress: String,
-        payInAddress: String,
-        txHash: String,
-        payInExtraId: String?,
-    ): Either<ExpressDataError, Unit> = Unit.right()
-
-    override suspend fun getStoredSwapUiMode(): SwapUIMode? = null
-    override suspend fun storeSwapUiMode(mode: SwapUIMode) {}
-
-    // ===== Helpers =====
 
     private data class DexResult(
         val source: String,
@@ -247,151 +38,125 @@ internal class RaksaSwapRepository @Inject constructor(
         val allowanceContract: String?,
     )
 
-    private data class DexTx(
-        val to: String,
-        val data: String,
-        val value: String,
-        val gas: String?,
-        val amountOutRaw: String,
-        val allowanceTarget: String,
+    companion object {
+        private const val NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+        private val CHAIN_IDS = mapOf("ethereum" to 1, "arbitrum" to 42161, "optimism" to 10, "base" to 8453, "polygon" to 137, "bsc" to 56)
+        private val KYBER_SLUGS = mapOf("ethereum" to "ethereum", "arbitrum" to "arbitrum", "optimism" to "optimism", "base" to "base", "polygon" to "polygon", "bsc" to "bsc")
+    }
+
+    private fun dexProvider(id: String, name: String) = SwapProvider(
+        providerId = id, name = name, type = ExchangeProviderType.DEX,
+        rateTypes = listOf(RateType.FLOAT), imageLarge = "",
+        termsOfUse = null, privacyPolicy = null, slippage = null,
     )
+    private val providers = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"))
 
-    private data class SwapTxData(
-        val to: String, val data: String, val value: String,
-        val gas: java.math.BigInteger, val allowance: String,
-        val amountOutRaw: String = "0",
-    )
+    override suspend fun getPairs(userWallet: UserWallet, initialCurrency: LeastTokenInfo, currencyList: List<CryptoCurrency>): PairsWithProviders = getPairsOnly(userWallet, initialCurrency, currencyList)
 
-
-    private suspend fun buildAcrossBridgeTx(
-        fromAddr: String, fromChain: String,
-        toAddr: String, toChain: String,
-        rawAmount: String, fromDec: Int, toDec: Int,
-        fromAddress: String, toAddress: String,
-    ): SwapTxData {
-        val fromChainId = DexTokenList.chainIds[fromChain.lowercase()] ?: throw RuntimeException("Unsupported chain: " + fromChain)
-        val toChainId = DexTokenList.chainIds[toChain.lowercase()] ?: throw RuntimeException("Unsupported chain: " + toChain)
-        val fees = acrossBridgeApi.getSuggestedFees(
-            inputToken = fromAddr, outputToken = toAddr,
-            originChainId = fromChainId, destinationChainId = toChainId,
-            amount = rawAmount,
-        )
-        val totalFee = (fees.relayFeeTotal?.toLongOrNull() ?: 0L) + (fees.lpFeeTotal?.toLongOrNull() ?: 0L)
-        val amountIn = rawAmount.toLongOrNull() ?: 0L
-        val amountOut = (amountIn - totalFee).coerceAtLeast(0)
-        val spokePool = DexTokenList.ACROSS_SPOKE_POOLS[fromChainId] ?: throw RuntimeException("No SpokePool for chain " + fromChainId)
-        val isNative = fromAddr.lowercase() == DexTokenList.NATIVE_TOKEN.lowercase()
-        return SwapTxData(
-            to = spokePool,
-            data = "",
-            value = if (isNative) rawAmount else "0",
-            gas = java.math.BigInteger.valueOf(300000),
-            allowance = spokePool,
-        )
+    override suspend fun getPairsOnly(userWallet: UserWallet, initialCurrency: LeastTokenInfo, currencyList: List<CryptoCurrency>, isIgnoreExpress: Boolean): PairsWithProviders = withContext(coroutineDispatcher.io) {
+        PairsWithProviders(pairs = emptyList(), allProviders = providers)
     }
 
-    private suspend fun buildParaswapTx(
-        sellToken: String, buyToken: String, amount: String,
-        sellDecimals: Int, buyDecimals: Int,
-        chain: String, sender: String, recipient: String,
-    ): DexTx {
-        val prices = paraswapApi.getPrices(
-            srcToken = sellToken, destToken = buyToken,
-            amount = amount, srcDecimals = sellDecimals, destDecimals = buyDecimals,
-            network = toChainId(chain),
+    override suspend fun findBestQuote(
+        userWallet: UserWallet,
+        fromContractAddress: String, fromNetwork: String,
+        toContractAddress: String, toNetwork: String,
+        fromAmount: String, fromDecimals: Int, toDecimals: Int,
+        providerId: String, rateType: RateType,
+    ): Either<ExpressDataError, QuoteModel> = withContext(coroutineDispatcher.io) {
+        try {
+            val safeFromAddr = if (fromContractAddress.isBlank() || fromContractAddress == "0" || fromContractAddress == "0x") NATIVE else fromContractAddress
+            val safeToAddr = if (toContractAddress.isBlank() || toContractAddress == "0" || toContractAddress == "0x") NATIVE else toContractAddress
+
+            if (fromNetwork.lowercase() != toNetwork.lowercase()) {
+                val isUtxo = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin")
+                if (isUtxo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+                return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+            }
+            if (!DexTokenList.isChainSupported(fromNetwork)) return@withContext ExpressDataError.UnknownError().left()
+            if (providerId.lowercase() == "across") return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+
+            val results = mutableListOf<DexResult>()
+            try {
+                val resp = paraswapApi.getPrices(safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals, network = toChainId(fromNetwork))
+                resp.priceRoute?.let { results.add(DexResult("paraswap", it.destAmount, null, it.tokenTransferProxy)) }
+            } catch (_: Exception) {}
+            try {
+                val slug = KYBER_SLUGS[fromNetwork.lowercase()] ?: return@withContext ExpressDataError.UnknownError().left()
+                val resp = kyberSwapApi.getRoutes(slug, safeFromAddr, safeToAddr, fromAmount)
+                if (resp.code == 0) resp.data?.routeSummary?.let { results.add(DexResult("kyberswap", it.amountOut, it.gas?.toLongOrNull(), null)) }
+            } catch (_: Exception) {}
+
+            if (results.isEmpty()) return@withContext ExpressDataError.UnknownError().left()
+            val best = results.maxByOrNull { it.amountOutRaw.toBigDecimalOrNull() ?: BigDecimal.ZERO } ?: results.first()
+            val amountOut = rawToAmount(best.amountOutRaw, toDecimals)
+            QuoteModel(toTokenAmount = SwapAmount(amountOut, toDecimals), allowanceContract = best.allowanceContract, txType = ExpressTxType.SWAP).right()
+        } catch (e: Exception) { ExpressDataError.UnknownError().left() }
+    }
+
+    override suspend fun getExchangeData(
+        userWallet: UserWallet,
+        fromContractAddress: String, fromNetwork: String,
+        toContractAddress: String, fromAddress: String,
+        toNetwork: String, fromAmount: String,
+        fromDecimals: Int, toDecimals: Int,
+        providerId: String, rateType: RateType,
+        toAddress: String, expressOperationType: ExpressOperationType,
+        refundAddress: String?, refundExtraId: String?, toExtraId: String?,
+    ): Either<ExpressDataError, SwapDataModel> = withContext(coroutineDispatcher.io) {
+        // TODO: Implement swap execution (sign + broadcast)
+        ExpressDataError.UnknownError().left()
+    }
+
+override suspend fun getExchangeStatus(userWallet: UserWallet?, userWalletId: UserWalletId, txId: String): Either<UnknownError, ExchangeStatusModel> = UnknownError().left()
+
+    override suspend fun exchangeSent(userWallet: UserWallet, txId: String, fromNetwork: String, fromAddress: String, payInAddress: String, txHash: String, payInExtraId: String?): Either<ExpressDataError, Unit> = Unit.right()
+
+    override suspend fun getStoredSwapUiMode(): SwapUIMode? = null
+    override suspend fun storeSwapUiMode(mode: SwapUIMode) {}
+
+    private fun toChainId(chain: String): Int = CHAIN_IDS[chain.lowercase()] ?: 1
+    private fun rawToAmount(raw: String, decimals: Int): BigDecimal = (raw.toBigDecimalOrNull() ?: BigDecimal.ZERO).movePointLeft(decimals)
+
+    // ===== THORChain =====
+    private fun thorchainAsset(chain: String, symbol: String): String? {
+        val c = chain.lowercase().replace("-one", "")
+        val s = symbol.uppercase()
+        val map = mapOf(
+            "bitcoin" to mapOf("BTC" to "BTC.BTC", "USDC" to "ETH.USDC-0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "USDT" to "ETH.USDT-0xdAC17F958D2ee523a2206206994597C13D831ec7"),
+            "ethereum" to mapOf("ETH" to "ETH.ETH", "USDC" to "ETH.USDC-0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "USDT" to "ETH.USDT-0xdAC17F958D2ee523a2206206994597C13D831ec7", "WETH" to "ETH.ETH"),
+            "litecoin" to mapOf("LTC" to "LTC.LTC"),
+            "avalanche" to mapOf("AVAX" to "AVAX.AVAX"),
         )
-        val route = prices.priceRoute ?: throw RuntimeException(prices.error ?: "paraswap error")
-        val minOut = (route.destAmount.toBigDecimal() * BigDecimal("0.99")).toBigInteger().toString()
-        val txResp = paraswapApi.buildTransaction(
-            chainId = toChainId(chain),
-            body = ParaswapTxRequest(
-                srcToken = sellToken, destToken = buyToken,
-                srcAmount = amount, destAmount = minOut,
-                priceRoute = route,
-                userAddress = sender, receiver = recipient,
-                srcDecimals = sellDecimals, destDecimals = buyDecimals,
-            ),
-        )
-        if (txResp.error != null) throw RuntimeException(txResp.error)
-        return DexTx(
-            to = txResp.to,
-            data = txResp.data,
-            value = txResp.value ?: "0",
-            gas = txResp.gas,
-            amountOutRaw = route.destAmount,
-            allowanceTarget = route.tokenTransferProxy ?: txResp.to,
-        )
+        return map[c]?.get(s)
     }
 
-    private suspend fun buildKyberTx(
-        sellToken: String, buyToken: String, amount: String,
-        chain: String, sender: String, recipient: String,
-    ): DexTx {
-        val slug = DexTokenList.kyberChainSlugs[chain.lowercase()]
-            ?: throw RuntimeException("kyber: unknown chain $chain")
-        val routes = kyberSwapApi.getRoutes(slug, sellToken, buyToken, amount)
-        if (routes.code != 0) throw RuntimeException(routes.message ?: "kyber routes error")
-        val summary = routes.data?.routeSummary
-            ?: throw RuntimeException("kyber: missing routeSummary")
-        val buildResp = kyberSwapApi.buildRoute(slug, KyberBuildRequest(
-            routeSummary = summary,
-            sender = sender, recipient = recipient,
-            slippageTolerance = 100,
-        ))
-        if (buildResp.code != 0) throw RuntimeException(buildResp.message ?: "kyber build error")
-        val buildData = buildResp.data ?: throw RuntimeException("kyber: missing build data")
-        val isNativeIn = sellToken.lowercase() == DexTokenList.NATIVE_TOKEN.lowercase()
-        return DexTx(
-            to = buildData.routerAddress,
-            data = buildData.data,
-            value = if (isNativeIn) amount else "0",
-            gas = buildData.gas,
-            amountOutRaw = summary.amountOut,
-            allowanceTarget = buildData.routerAddress,
-        )
+    private suspend fun fetchThorchainQuote(fromAddr: String, fromChain: String, toAddr: String, toChain: String, amount: String, fromDec: Int, toDec: Int): Either<ExpressDataError, QuoteModel> {
+        try {
+            val fromSymbol = when { fromChain.lowercase().contains("bitcoin") -> "BTC"; fromChain.lowercase().contains("litecoin") -> "LTC"; else -> "ETH" }
+            val toSymbol = when { toChain.lowercase().contains("bitcoin") -> "BTC"; toChain.lowercase().contains("ethereum") -> "ETH"; else -> "ETH" }
+            val fromAsset = thorchainAsset(fromChain, fromSymbol) ?: return ExpressDataError.UnknownError().left()
+            val toAsset = thorchainAsset(toChain, toSymbol) ?: return ExpressDataError.UnknownError().left()
+            val rawAmount = amount.toBigDecimalOrNull()?.movePointRight(8)?.toBigInteger().toString() ?: "0"
+            val resp = thorchainApi.getQuote(rawAmount, fromAsset, toAsset)
+            if (resp.error != null) return ExpressDataError.UnknownError().left()
+            val expectedOut = resp.expectedAmountOut?.toLongOrNull() ?: 0L
+            val amountOutHuman = expectedOut.toBigDecimal().movePointLeft(8)
+            return QuoteModel(toTokenAmount = SwapAmount(amountOutHuman, toDec), allowanceContract = null, txType = ExpressTxType.SWAP).right()
+        } catch (e: Exception) { return ExpressDataError.UnknownError().left() }
     }
 
-    private fun toRawAmount(humanAmount: String, decimals: Int): String {
-        val bd = humanAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO
-        return bd.movePointRight(decimals).toBigInteger().toString()
-    }
-
-    private fun rawToAmount(raw: String, decimals: Int): BigDecimal {
-        val bi = raw.toBigDecimalOrNull() ?: BigDecimal.ZERO
-        return bi.movePointLeft(decimals)
-    }
-
-    private fun toChainId(chain: String): Int {
-        return DexTokenList.chainIds[chain.lowercase()]
-            ?: throw RuntimeException("Unknown chain: $chain")
-    }
-
-    private fun createDexProvider(id: String, name: String) = SwapProvider(
-        providerId = id, name = name,
-        type = ExchangeProviderType.DEX,
-        rateTypes = listOf(RateType.FLOAT),
-        imageLarge = "",
-        termsOfUse = null,
-        privacyPolicy = null,
-        slippage = null,
-    )
-
-    private fun CryptoCurrency.toLeastTokenInfo(): LeastTokenInfo? {
-        val contractAddress = when (this) {
-            is CryptoCurrency.Token -> contractAddress
-            is CryptoCurrency.Coin -> DexTokenList.NATIVE_TOKEN
-        }
-        val networkId = network.rawId
-        // Map network rawId to DEX chain name
-        val chainName = when {
-            networkId.contains("arbitrum", ignoreCase = true) -> "arbitrum"
-            networkId.contains("optimism", ignoreCase = true) -> "optimism"
-            networkId.contains("base", ignoreCase = true) -> "base"
-            networkId.contains("polygon", ignoreCase = true) || networkId.contains("matic", ignoreCase = true) -> "polygon"
-            networkId.contains("bsc", ignoreCase = true) || networkId.contains("bnb", ignoreCase = true) -> "bsc"
-            networkId.contains("ethereum", ignoreCase = true) || networkId == "1" -> "ethereum"
-            else -> return null
-        }
-        return LeastTokenInfo(contractAddress = contractAddress, network = chainName)
+    // ===== Across =====
+    private suspend fun fetchAcrossQuote(fromAddr: String, fromChain: String, toAddr: String, toChain: String, amount: String, fromDec: Int, toDec: Int): Either<ExpressDataError, QuoteModel> {
+        try {
+            val fromChainId = CHAIN_IDS[fromChain.lowercase()] ?: return ExpressDataError.UnknownError().left()
+            val toChainId = CHAIN_IDS[toChain.lowercase()] ?: return ExpressDataError.UnknownError().left()
+            val fees = acrossBridgeApi.getSuggestedFees(fromAddr, toAddr, fromChainId, toChainId, amount)
+            val totalFee = (fees.relayFeeTotal?.toLongOrNull() ?: 0L) + (fees.lpFeeTotal?.toLongOrNull() ?: 0L)
+            val amountIn = amount.toLongOrNull() ?: 0L
+            val amountOut = (amountIn - totalFee).coerceAtLeast(0)
+            val amountOutHuman = rawToAmount(amountOut.toString(), toDec)
+            return QuoteModel(toTokenAmount = SwapAmount(amountOutHuman, toDec), allowanceContract = null, txType = ExpressTxType.SWAP).right()
+        } catch (e: Exception) { return ExpressDataError.UnknownError().left() }
     }
 }

@@ -11,6 +11,7 @@ import com.tangem.data.swap.DefaultSwapTransactionRepository
 import com.tangem.datasource.api.express.TangemExpressApi
 import com.tangem.datasource.api.swap.KyberSwapApi
 import com.tangem.datasource.api.swap.ParaswapApi
+import com.tangem.datasource.api.swap.ThorchainApi
 import com.tangem.datasource.api.express.models.response.ExpressErrorResponse
 import com.tangem.datasource.crypto.DataSignatureVerifier
 import com.tangem.datasource.di.NetworkMoshi
