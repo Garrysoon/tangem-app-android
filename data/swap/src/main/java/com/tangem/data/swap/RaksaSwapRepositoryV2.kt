@@ -242,6 +242,8 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
     private fun chainOf(c: CryptoCurrency): String {
         val id = c.network.rawId.lowercase()
         return when {
+            "bitcoin" in id -> "bitcoin"
+            "litecoin" in id -> "litecoin"
             "arbitrum" in id -> "arbitrum"
             "optimism" in id -> "optimism"
             "base" in id -> "base"

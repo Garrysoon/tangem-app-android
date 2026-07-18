@@ -74,6 +74,9 @@ internal class RaksaSwapRepository @Inject constructor(
                 if (isUtxo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
                 return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
             }
+            val isUtxoFrom = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin")
+            val isUtxoTo = toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
+            if (isUtxoFrom || isUtxoTo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
             if (!DexTokenList.isChainSupported(fromNetwork)) return@withContext ExpressDataError.UnknownError().left()
             if (providerId.lowercase() == "across") return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
 
