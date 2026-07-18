@@ -104,6 +104,7 @@ object SecurityOSCommandMapper {
 
     // ===== Command interception =====
 
+    @Synchronized
     fun interceptCommand(apduData: ByteArray): ByteArray? {
         if (apduData.size < 5) return null
 
@@ -383,6 +384,7 @@ object SecurityOSCommandMapper {
      * The card signs each input's sighash separately.
      * Returns map of inputIndex → signature.
      */
+    @Synchronized
     fun signPsbt(psbt: ByteArray, signingKeyPath: String): Map<Int, ByteArray> {
         Log.d(TAG, "PSBT signing: ${psbt.size}B, keyPath=$signingKeyPath")
         val signatures = mutableMapOf<Int, ByteArray>()
