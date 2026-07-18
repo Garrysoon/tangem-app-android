@@ -34,6 +34,8 @@ sealed class ApiConfig {
         GaslessTxService,
         SurveySparrow,
         Raksa,
+        Paraswap,
+        KyberSwap,
     }
 
     private fun initializeId(): ID {
@@ -51,6 +53,8 @@ sealed class ApiConfig {
             is GaslessTxService -> ID.GaslessTxService
             is SurveySparrow -> ID.SurveySparrow
             is Raksa -> ID.Raksa
+            is Paraswap -> ID.Paraswap
+            is KyberSwap -> ID.KyberSwap
         }
     }
 

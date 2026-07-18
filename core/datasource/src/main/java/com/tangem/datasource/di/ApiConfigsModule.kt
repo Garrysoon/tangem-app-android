@@ -119,4 +119,16 @@ internal object ApiConfigsModule {
     fun provideRaksaConfig(): ApiConfig {
         return Raksa()
     }
+
+    @Provides
+    @IntoSet
+    fun provideParaswapConfig(): ApiConfig {
+        return Paraswap()
+    }
+
+    @Provides
+    @IntoSet
+    fun provideKyberSwapConfig(): ApiConfig {
+        return KyberSwap()
+    }
 }
