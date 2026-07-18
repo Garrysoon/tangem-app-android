@@ -65,6 +65,7 @@ internal class RaksaSwapRepository @Inject constructor(
         providerId: String, rateType: RateType,
     ): Either<ExpressDataError, QuoteModel> = withContext(coroutineDispatcher.io) {
         try {
+            android.util.Log.d("RaksaSwap", "findBestQuote: from=$fromNetwork to=$toNetwork fromAddr=$fromContractAddress provider=$providerId")
             val safeFromAddr = if (fromContractAddress.isBlank() || fromContractAddress == "0" || fromContractAddress == "0x") NATIVE else fromContractAddress
             val safeToAddr = if (toContractAddress.isBlank() || toContractAddress == "0" || toContractAddress == "0x") NATIVE else toContractAddress
 
@@ -137,11 +138,11 @@ override suspend fun getExchangeStatus(userWallet: UserWallet?, userWalletId: Us
             val toSymbol = when { toChain.lowercase().contains("bitcoin") -> "BTC"; toChain.lowercase().contains("ethereum") -> "ETH"; else -> "ETH" }
             val fromAsset = thorchainAsset(fromChain, fromSymbol) ?: return ExpressDataError.UnknownError().left()
             val toAsset = thorchainAsset(toChain, toSymbol) ?: return ExpressDataError.UnknownError().left()
-            val rawAmount = amount.toBigDecimalOrNull()?.movePointRight(8)?.toBigInteger().toString() ?: "0"
+            val rawAmount = amount  // already in raw units from toStringWithRightOffset()
             val resp = thorchainApi.getQuote(rawAmount, fromAsset, toAsset)
             if (resp.error != null) return ExpressDataError.UnknownError().left()
             val expectedOut = resp.expectedAmountOut?.toLongOrNull() ?: 0L
-            val amountOutHuman = expectedOut.toBigDecimal().movePointLeft(8)
+            val amountOutHuman = rawToAmount(expectedOut.toString(), toDec)
             return QuoteModel(toTokenAmount = SwapAmount(amountOutHuman, toDec), allowanceContract = null, txType = ExpressTxType.SWAP).right()
         } catch (e: Exception) { return ExpressDataError.UnknownError().left() }
     }
