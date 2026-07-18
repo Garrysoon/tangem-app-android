@@ -86,14 +86,17 @@ internal class RaksaSwapRepository @Inject constructor(
             return@withContext ExpressDataError.UnknownError().left()
         }
         try {
-            val rawAmount = toRawAmount(fromAmount, fromDecimals)
+            // Normalize native token address: "0" or empty -> NATIVE_TOKEN
+            val safeFromAddr = if (fromContractAddress.isBlank() || fromContractAddress == "0" || fromContractAddress == "0x") DexTokenList.NATIVE_TOKEN else fromContractAddress
+            val safeToAddr = if (toContractAddress.isBlank() || toContractAddress == "0" || toContractAddress == "0x") DexTokenList.NATIVE_TOKEN else toContractAddress
+            val rawAmount = fromAmount
             val results = mutableListOf<DexResult>()
 
             // Paraswap
             try {
                 val resp = paraswapApi.getPrices(
-                    srcToken = fromContractAddress,
-                    destToken = toContractAddress,
+                    srcToken = safeFromAddr,
+                    destToken = safeToAddr,
                     amount = rawAmount,
                     srcDecimals = fromDecimals,
                     destDecimals = toDecimals,
@@ -168,7 +171,7 @@ internal class RaksaSwapRepository @Inject constructor(
             return@withContext ExpressDataError.UnknownError().left()
         }
         try {
-            val rawAmount = toRawAmount(fromAmount, fromDecimals)
+            val rawAmount = fromAmount
             val tx = when (providerId.lowercase()) {
                 "paraswap" -> buildParaswapTx(fromContractAddress, toContractAddress, rawAmount, fromDecimals, toDecimals, fromNetwork, fromAddress, toAddress)
                 "kyberswap" -> buildKyberTx(fromContractAddress, toContractAddress, rawAmount, fromNetwork, fromAddress, toAddress)

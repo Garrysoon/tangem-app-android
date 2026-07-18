@@ -60,6 +60,6 @@ internal fun SwapAmount.formatToUIRepresentation(): String {
 internal fun CryptoCurrency.getContractAddress(): String {
     return when (this) {
         is CryptoCurrency.Token -> this.contractAddress
-        is CryptoCurrency.Coin -> "0"
+        is CryptoCurrency.Coin -> "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
     }
 }
