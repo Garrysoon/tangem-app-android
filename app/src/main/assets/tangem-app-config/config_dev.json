@@ -1,4 +1,4 @@
-{
+﻿{
 	"amplitudeApiKey": "",
 	"amplitudeApiKeyDev": "",
 	"appsFlyer": {
@@ -168,7 +168,7 @@
 	"quiknodeXRPLApiKey": "",
 	"quiknodeXRPLSubdomain": "",
 	"tronGridApiKey": "",
-	"walletConnectProjectId": "",
+	"walletConnectProjectId": "a34895c558717561990ef970f0552759",
 	"chiaFireAcademyApiKey": "",
 	"chiaTangemApiKey": "",
 	"express": {

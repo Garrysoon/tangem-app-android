@@ -1,4 +1,4 @@
-{
+﻿{
 	"amplitudeApiKey": "PLACEHOLDER",
 	"amplitudeApiKeyDev": "PLACEHOLDER",
 	"appsFlyer": {
@@ -165,7 +165,7 @@
 	"quiknodeXRPLApiKey": "PLACEHOLDER",
 	"quiknodeXRPLSubdomain": "PLACEHOLDER",
 	"tronGridApiKey": "PLACEHOLDER",
-	"walletConnectProjectId": "PLACEHOLDER",
+	"walletConnectProjectId": "a34895c558717561990ef970f0552759",
 	"chiaFireAcademyApiKey": "PLACEHOLDER",
 	"chiaTangemApiKey": "PLACEHOLDER",
 	"express": {
