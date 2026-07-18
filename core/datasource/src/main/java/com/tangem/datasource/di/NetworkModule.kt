@@ -12,6 +12,7 @@ import com.tangem.datasource.api.common.config.managers.MockApiConfigsManager
 import com.tangem.datasource.api.common.config.managers.ProdApiConfigsManager
 import com.tangem.datasource.api.express.TangemExpressApi
 import com.tangem.datasource.api.raksa.RaksaApi
+import com.tangem.datasource.api.swap.AcrossBridgeApi
 import com.tangem.datasource.api.swap.KyberSwapApi
 import com.tangem.datasource.api.swap.ParaswapApi
 import com.tangem.datasource.api.markets.TangemTechMarketsApi
@@ -90,6 +91,20 @@ internal object NetworkModule {
                 callTimeoutSeconds = TIMEOUT_60_SECONDS,
                 connectTimeoutSeconds = TIMEOUT_60_SECONDS,
                 readTimeoutSeconds = TIMEOUT_60_SECONDS,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideAcrossApi(retrofitApiBuilder: RetrofitApiBuilder): AcrossBridgeApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Across,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = 30L,
+                connectTimeoutSeconds = 30L,
+                readTimeoutSeconds = 30L,
             ),
         )
     }

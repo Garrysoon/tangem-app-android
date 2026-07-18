@@ -36,6 +36,7 @@ sealed class ApiConfig {
         Raksa,
         Paraswap,
         KyberSwap,
+        Across,
     }
 
     private fun initializeId(): ID {
@@ -55,6 +56,7 @@ sealed class ApiConfig {
             is Raksa -> ID.Raksa
             is Paraswap -> ID.Paraswap
             is KyberSwap -> ID.KyberSwap
+            is Across -> ID.Across
         }
     }
 

@@ -131,4 +131,10 @@ internal object ApiConfigsModule {
     fun provideKyberSwapConfig(): ApiConfig {
         return KyberSwap()
     }
+
+    @Provides
+    @IntoSet
+    fun provideAcrossConfig(): ApiConfig {
+        return Across()
+    }
 }

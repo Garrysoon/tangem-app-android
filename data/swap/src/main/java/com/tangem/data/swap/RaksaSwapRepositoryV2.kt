@@ -42,7 +42,12 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
         imageLarge = "", termsOfUse = null, privacyPolicy = null,
         slippage = null, rateTypes = listOf(ExpressRateType.Float),
     )
-    private val providers = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"))
+    private val dexProviders = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"))
+    private val bridgeProvider = ExpressProvider(
+        providerId = "across", name = "Across Bridge", type = ExpressProviderType.DEX,
+        imageLarge = "", termsOfUse = null, privacyPolicy = null,
+        slippage = null, rateTypes = listOf(ExpressRateType.Float),
+    )
 
     override suspend fun getPairs(
         primarySwapCurrencyStatus: SwapCurrencyStatus,
@@ -50,16 +55,26 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
         filterProviderTypes: List<ExpressProviderType>,
         swapTxType: SwapTxType,
     ): List<SwapPairModel> = withContext(coroutineDispatcher.default) {
-        // Check both tokens are on the same supported EVM chain
         val fromChain = chainOf(primarySwapCurrencyStatus.currency)
         val toChain = chainOf(secondarySwapCurrencyStatus.currency)
-        if (fromChain != toChain) return@withContext emptyList()
-        val p = providers.filter { it.type in filterProviderTypes }
-        listOf(SwapPairModel(
-            from = primarySwapCurrencyStatus.status,
-            to = secondarySwapCurrencyStatus.status,
-            providers = p,
-        ))
+        if (fromChain == toChain) {
+            // Same-chain: DEX providers (Paraswap, KyberSwap)
+            val p = dexProviders.filter { it.type in filterProviderTypes }
+            listOf(SwapPairModel(
+                from = primarySwapCurrencyStatus.status,
+                to = secondarySwapCurrencyStatus.status,
+                providers = p,
+            ))
+        } else if (needsBridge(fromChain, toChain)) {
+            // Cross-chain: Across bridge
+            listOf(SwapPairModel(
+                from = primarySwapCurrencyStatus.status,
+                to = secondarySwapCurrencyStatus.status,
+                providers = listOf(bridgeProvider),
+            ))
+        } else {
+            emptyList()
+        }
     }
 
     override suspend fun getPairs(
@@ -77,7 +92,7 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
         filterProviderTypes: List<ExpressProviderType>,
         swapTxType: SwapTxType,
     ): List<SwapPairModel> = withContext(coroutineDispatcher.default) {
-        val p = providers.filter { it.type in filterProviderTypes }
+        val p = dexProviders.filter { it.type in filterProviderTypes }
         val allDexAddresses = getAllDexAddresses()
         cryptoCurrencyList.mapNotNull { currency ->
             val addr = addr(currency)
@@ -244,6 +259,14 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
     private val DEX_TOKENS_BASE = listOf("0x4200000000000000000000000000000000000006", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA", "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c")
     private val DEX_TOKENS_POLYGON = listOf("0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", "0x1BFD67037B42CF73acF2047067bd4F2C47D9BfD6")
     private val DEX_TOKENS_BSC = listOf("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", "0x55d398326f99059fF775485246999027B3197955", "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c")
+
+    private val ACROSS_SUPPORTED_CHAINS = setOf("ethereum", "arbitrum", "polygon", "optimism", "base", "bsc")
+
+    private fun needsBridge(fromChain: String, toChain: String): Boolean {
+        return fromChain.lowercase() != toChain.lowercase() &&
+            ACROSS_SUPPORTED_CHAINS.contains(fromChain.lowercase()) &&
+            ACROSS_SUPPORTED_CHAINS.contains(toChain.lowercase())
+    }
 
     private fun chainId(chain: String): Int = CHAIN_IDS[chain.lowercase()] ?: 1
 }

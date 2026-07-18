@@ -28,6 +28,23 @@ object DexTokenList {
     }
 
 
+
+    // Across Protocol SpokePool addresses (mainnet)
+    val ACROSS_SPOKE_POOLS = mapOf(
+        1 to "0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5",
+        42161 to "0xe35e9842fceaCA96570B734083f4a58e8F7C5f2A",
+        137 to "0x9295ee1d8C5b022Be115A2AD3c30C72E34e7F096",
+        10 to "0x6f26534f1f4dE6825bb112B28d5aE44B29Ccf2C6",
+        8453 to "0x09aea4b2242abC8bb4BB78D537E67a245A7bEC64",
+        56 to "0x4e8E1F0D8ca0D27F3E1ad3b1a17D3c88Cb83c8f8",
+    )
+
+    fun needsBridge(fromChain: String, toChain: String): Boolean {
+        return fromChain.lowercase() != toChain.lowercase() &&
+            SUPPORTED_CHAINS.contains(fromChain.lowercase()) &&
+            SUPPORTED_CHAINS.contains(toChain.lowercase())
+    }
+
     data class DexToken(
         val symbol: String,
         val address: String,

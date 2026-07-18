@@ -7,6 +7,7 @@ import com.tangem.domain.express.models.ExpressOperationType
 import com.tangem.domain.models.currency.CryptoCurrency
 import com.tangem.domain.models.wallet.UserWallet
 import com.tangem.domain.models.wallet.UserWalletId
+import com.tangem.datasource.api.swap.AcrossBridgeApi
 import com.tangem.datasource.api.swap.KyberSwapApi
 import com.tangem.datasource.api.swap.ParaswapApi
 import com.tangem.datasource.api.swap.models.KyberBuildRequest
@@ -34,6 +35,7 @@ import javax.inject.Inject
 internal class RaksaSwapRepository @Inject constructor(
     private val paraswapApi: ParaswapApi,
     private val kyberSwapApi: KyberSwapApi,
+    private val acrossBridgeApi: AcrossBridgeApi,
     private val coroutineDispatcher: CoroutineDispatcherProvider,
 ) : SwapRepository {
 
@@ -163,8 +165,25 @@ internal class RaksaSwapRepository @Inject constructor(
         refundExtraId: String?,
         toExtraId: String?,
     ): Either<ExpressDataError, SwapDataModel> = withContext(coroutineDispatcher.io) {
-        // Check chain support
-        if (!DexTokenList.isChainSupported(fromNetwork) || !DexTokenList.isChainSupported(toNetwork)) {
+        // Cross-chain: build Across bridge tx
+        if (fromNetwork.lowercase() != toNetwork.lowercase()) {
+            val acrossTx = buildAcrossBridgeTx(fromContractAddress, fromNetwork, toContractAddress, toNetwork, fromAmount, fromDecimals, toDecimals, fromAddress, toAddress)
+            val amountOut = rawToAmount(acrossTx.amountOutRaw.ifEmpty { fromAmount }, toDecimals)
+            val fromAmountBD = fromAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO
+            return@withContext SwapDataModel(
+                toTokenAmount = SwapAmount(amountOut, toDecimals),
+                transaction = ExpressTransactionModel.DEX(
+                    fromAmount = SwapAmount(fromAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO, fromDecimals),
+                    toAmount = SwapAmount(amountOut, toDecimals),
+                    txValue = acrossTx.value, txId = "", txTo = acrossTx.to,
+                    txExtraId = null, txFrom = fromAddress, txData = acrossTx.data,
+                    otherNativeFeeWei = null, gas = acrossTx.gas,
+                    allowanceContract = acrossTx.allowance,
+                ),
+            ).right()
+        }
+        // Same-chain: check chain support
+        if (!DexTokenList.isChainSupported(fromNetwork)) {
             return@withContext ExpressDataError.UnknownError().left()
         }
         if (fromNetwork.lowercase() != toNetwork.lowercase()) {
@@ -236,6 +255,40 @@ internal class RaksaSwapRepository @Inject constructor(
         val amountOutRaw: String,
         val allowanceTarget: String,
     )
+
+    private data class SwapTxData(
+        val to: String, val data: String, val value: String,
+        val gas: java.math.BigInteger, val allowance: String,
+        val amountOutRaw: String = "0",
+    )
+
+
+    private suspend fun buildAcrossBridgeTx(
+        fromAddr: String, fromChain: String,
+        toAddr: String, toChain: String,
+        rawAmount: String, fromDec: Int, toDec: Int,
+        fromAddress: String, toAddress: String,
+    ): SwapTxData {
+        val fromChainId = DexTokenList.chainIds[fromChain.lowercase()] ?: throw RuntimeException("Unsupported chain: " + fromChain)
+        val toChainId = DexTokenList.chainIds[toChain.lowercase()] ?: throw RuntimeException("Unsupported chain: " + toChain)
+        val fees = acrossBridgeApi.getSuggestedFees(
+            inputToken = fromAddr, outputToken = toAddr,
+            originChainId = fromChainId, destinationChainId = toChainId,
+            amount = rawAmount,
+        )
+        val totalFee = (fees.relayFeeTotal?.toLongOrNull() ?: 0L) + (fees.lpFeeTotal?.toLongOrNull() ?: 0L)
+        val amountIn = rawAmount.toLongOrNull() ?: 0L
+        val amountOut = (amountIn - totalFee).coerceAtLeast(0)
+        val spokePool = DexTokenList.ACROSS_SPOKE_POOLS[fromChainId] ?: throw RuntimeException("No SpokePool for chain " + fromChainId)
+        val isNative = fromAddr.lowercase() == DexTokenList.NATIVE_TOKEN.lowercase()
+        return SwapTxData(
+            to = spokePool,
+            data = "",
+            value = if (isNative) rawAmount else "0",
+            gas = java.math.BigInteger.valueOf(300000),
+            allowance = spokePool,
+        )
+    }
 
     private suspend fun buildParaswapTx(
         sellToken: String, buyToken: String, amount: String,

@@ -5,6 +5,7 @@ import com.tangem.data.common.currency.ResponseCryptoCurrenciesFactory
 import com.tangem.data.common.network.NetworkFactory
 import com.tangem.datasource.api.express.TangemExpressApi
 import com.tangem.datasource.api.express.models.response.ExpressErrorResponse
+import com.tangem.datasource.api.swap.AcrossBridgeApi
 import com.tangem.datasource.api.surveysparrow.SurveySparrowApi
 import com.tangem.datasource.crypto.DataSignatureVerifier
 import com.tangem.datasource.di.NetworkMoshi
@@ -38,11 +39,13 @@ internal class SwapDataModule {
     internal fun provideSwapRepository(
         paraswapApi: com.tangem.datasource.api.swap.ParaswapApi,
         kyberSwapApi: com.tangem.datasource.api.swap.KyberSwapApi,
+        acrossBridgeApi: AcrossBridgeApi,
         coroutineDispatcher: CoroutineDispatcherProvider,
     ): SwapRepository {
         return RaksaSwapRepository(
             paraswapApi = paraswapApi,
             kyberSwapApi = kyberSwapApi,
+            acrossBridgeApi = acrossBridgeApi,
             coroutineDispatcher = coroutineDispatcher,
         )
     }
