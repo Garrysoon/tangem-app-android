@@ -33,6 +33,11 @@ sealed class ApiConfig {
         News,
         GaslessTxService,
         SurveySparrow,
+        Raksa,
+        Paraswap,
+        KyberSwap,
+        Across,
+        Thorchain,
     }
 
     private fun initializeId(): ID {
@@ -49,6 +54,11 @@ sealed class ApiConfig {
             is News -> ID.News
             is GaslessTxService -> ID.GaslessTxService
             is SurveySparrow -> ID.SurveySparrow
+            is Raksa -> ID.Raksa
+            is Paraswap -> ID.Paraswap
+            is KyberSwap -> ID.KyberSwap
+            is Across -> ID.Across
+            is Thorchain -> ID.Thorchain
         }
     }
 

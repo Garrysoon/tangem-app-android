@@ -698,7 +698,11 @@ internal class TokenDetailsModel @Inject constructor(
                 cryptoCurrency.network,
             ).fold(
                 ifLeft = { throwable ->
-                    TangemLogger.e(throwable.cause?.localizedMessage.orEmpty())
+                    TangemLogger.e("Failed to generate XPUB: ${throwable.message}")
+                    TangemLogger.e(throwable.cause?.stackTraceToString().orEmpty())
+                    uiMessageSender.send(
+                        SnackbarMessage(message = resourceReference(R.string.common_error)),
+                    )
                     ""
                 },
                 ifRight = { it },

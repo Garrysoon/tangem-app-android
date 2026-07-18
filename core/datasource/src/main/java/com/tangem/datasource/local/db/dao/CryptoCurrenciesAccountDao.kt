@@ -22,4 +22,7 @@ interface CryptoCurrenciesAccountDao {
 
     @Query("SELECT * FROM CryptoCurrenciesAccountEntity WHERE userWalletId = :userWalletId")
     suspend fun selectByUserWalletId(userWalletId: UserWalletId): List<CryptoCurrenciesAccountEntity>
+
+    @Query("DELETE FROM CryptoCurrenciesAccountEntity WHERE userWalletId = :userWalletId")
+    suspend fun deleteByWalletId(userWalletId: UserWalletId)
 }

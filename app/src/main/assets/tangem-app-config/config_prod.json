@@ -21,34 +21,34 @@
 		"ethereum": {
 			"jsonRpc": "PLACEHOLDER"
 		},
-		"ethereumClassic":  {
+		"ethereumClassic": {
 			"jsonRpc": "PLACEHOLDER"
 		},
 		"fantom": {
 			"jsonRpc": "PLACEHOLDER"
 		},
-		"rsk":  {
+		"rsk": {
 			"jsonRpc": "PLACEHOLDER"
 		},
 		"bsc": {
 			"jsonRpc": "PLACEHOLDER"
 		},
-		"polygon":  {
+		"polygon": {
 			"jsonRpc": "PLACEHOLDER"
 		},
 		"xdai": {
 			"jsonRpc": "PLACEHOLDER"
 		},
-		"cronos":  {
+		"cronos": {
 			"jsonRpc": "PLACEHOLDER"
 		},
-		"solana":  {
+		"solana": {
 			"jsonRpc": "PLACEHOLDER"
 		},
-		"ton":  {
+		"ton": {
 			"jsonRpc": "PLACEHOLDER"
 		},
-		"tron":  {
+		"tron": {
 			"rest": "PLACEHOLDER"
 		},
 		"cosmos-hub": {
@@ -131,14 +131,14 @@
 		"tezos": {
 			"rest": "PLACEHOLDER"
 		},
-        "monad": {
-            "rest": "PLACEHOLDER"
+		"monad": {
+			"rest": "PLACEHOLDER"
 		},
-        "stellar": {
-            "rest": "PLACEHOLDER"
+		"stellar": {
+			"rest": "PLACEHOLDER"
 		},
-        "berachain": {
-            "rest": "PLACEHOLDER"
+		"berachain": {
+			"rest": "PLACEHOLDER"
 		}
 	},
 	"kaspaSecondaryApiUrl": "PLACEHOLDER",
@@ -165,7 +165,7 @@
 	"quiknodeXRPLApiKey": "PLACEHOLDER",
 	"quiknodeXRPLSubdomain": "PLACEHOLDER",
 	"tronGridApiKey": "PLACEHOLDER",
-	"walletConnectProjectId": "PLACEHOLDER",
+	"walletConnectProjectId": "a34895c558717561990ef970f0552759",
 	"chiaFireAcademyApiKey": "PLACEHOLDER",
 	"chiaTangemApiKey": "PLACEHOLDER",
 	"express": {
@@ -197,23 +197,23 @@
 	"bffStaticToken": "PLACEHOLDER",
 	"bffStaticTokenDev": "PLACEHOLDER",
 	"p2pApiKey": {
-        "mainnet": "PLACEHOLDER",
-        "hoodi": "PLACEHOLDER"
-    },
+		"mainnet": "PLACEHOLDER",
+		"hoodi": "PLACEHOLDER"
+	},
 	"customerIO": {
 		"iosApiKey": "PLACEHOLDER",
 		"androidApiKey": "PLACEHOLDER"
-    },
+	},
 	"surveySparrow": {
-        "clientID": "PLACEHOLDER",
-        "clientSecret": "PLACEHOLDER",
-        "apiKey": "PLACEHOLDER",
+		"clientID": "PLACEHOLDER",
+		"clientSecret": "PLACEHOLDER",
+		"apiKey": "PLACEHOLDER",
 		"swapRating": {
 			"surveyId": "PLACEHOLDER",
 			"ratingQuestionId": "PLACEHOLDER",
 			"feedbackQuestionId": "PLACEHOLDER"
 		}
-    },
+	},
 	"gaslessTxApiKey": "PLACEHOLDER",
 	"gaslessTxApiKeyDev": "PLACEHOLDER",
 	"alchemyApiKey": "PLACEHOLDER",

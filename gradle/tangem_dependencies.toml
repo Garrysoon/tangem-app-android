@@ -7,8 +7,8 @@
 
 tangemBlockchainSdk = "releases-5.39-1601"
 #tangemBlockchainSdk = "0.0.1" # Keep it! - used for local builds
-tangemCardSdk = "releases-5.39-623"
-#tangemCardSdk = "0.0.1" # Keep it! - used for local builds ^
+tangemCardSdk = "0.0.1" # Switched to mavenLocal for SecurityOS
+#tangemCardSdk = "releases-5.39-623"
 tangemVico = "tangem-master-21"
 #tangemVico = "0.0.1" # Keep it! - used for local builds ^
 tangemHotSdk = "develop-550"

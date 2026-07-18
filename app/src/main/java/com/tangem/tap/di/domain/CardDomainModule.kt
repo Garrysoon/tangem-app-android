@@ -12,6 +12,7 @@ import com.tangem.domain.wallets.derivations.DerivationsRepository
 import com.tangem.domain.wallets.usecase.*
 import com.tangem.sdk.api.TangemSdkManager
 import com.tangem.tap.domain.card.DefaultResetCardUseCase
+import com.tangem.tap.domain.wallets.DefaultPurgeWalletUseCase
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -62,6 +63,12 @@ internal object CardDomainModule {
     @Singleton
     fun provideResetCardUseCase(tangemSdkManager: TangemSdkManager): ResetCardUseCase {
         return DefaultResetCardUseCase(tangemSdkManager)
+    }
+
+    @Provides
+    @Singleton
+    fun providePurgeWalletUseCase(tangemSdkManager: TangemSdkManager): PurgeWalletUseCase {
+        return DefaultPurgeWalletUseCase(tangemSdkManager)
     }
 
     @Provides

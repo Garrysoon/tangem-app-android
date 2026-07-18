@@ -113,4 +113,34 @@ internal object ApiConfigsModule {
     fun provideSurveySparrowConfig(environmentConfig: EnvironmentConfig): ApiConfig {
         return SurveySparrow(environmentConfig)
     }
+
+    @Provides
+    @IntoSet
+    fun provideRaksaConfig(): ApiConfig {
+        return Raksa()
+    }
+
+    @Provides
+    @IntoSet
+    fun provideParaswapConfig(): ApiConfig {
+        return Paraswap()
+    }
+
+    @Provides
+    @IntoSet
+    fun provideKyberSwapConfig(): ApiConfig {
+        return KyberSwap()
+    }
+
+    @Provides
+    @IntoSet
+    fun provideAcrossConfig(): ApiConfig {
+        return Across()
+    }
+
+    @Provides
+    @IntoSet
+    fun provideThorchainConfig(): ApiConfig {
+        return Thorchain()
+    }
 }

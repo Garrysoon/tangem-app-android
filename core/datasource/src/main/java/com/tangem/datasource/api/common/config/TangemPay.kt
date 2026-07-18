@@ -1,4 +1,4 @@
-package com.tangem.datasource.api.common.config
+﻿package com.tangem.datasource.api.common.config
 
 import com.tangem.datasource.BuildConfig
 import com.tangem.datasource.local.config.environment.EnvironmentConfig
@@ -79,7 +79,7 @@ internal sealed class TangemPay(
         override fun getBaseUrl(apiEnvironment: ApiEnvironment): String {
             return when (apiEnvironment) {
                 ApiEnvironment.DEV -> "https://api.dev.us.paera.com/bff-v2/"
-                ApiEnvironment.MOCK -> "[REDACTED_ENV_URL]"
+                ApiEnvironment.MOCK -> "https://api.tangem.org/"
                 ApiEnvironment.PROD -> "https://api.us.paera.com/bff-v2/"
                 ApiEnvironment.DEV_2,
                 ApiEnvironment.DEV_3,
@@ -98,7 +98,7 @@ internal sealed class TangemPay(
         override fun getBaseUrl(apiEnvironment: ApiEnvironment): String {
             return when (apiEnvironment) {
                 ApiEnvironment.DEV -> "https://api.dev.us.paera.com/"
-                ApiEnvironment.MOCK -> "[REDACTED_ENV_URL]"
+                ApiEnvironment.MOCK -> "https://api.tangem.org/"
                 ApiEnvironment.PROD -> "https://api.us.paera.com/"
                 ApiEnvironment.DEV_2,
                 ApiEnvironment.DEV_3,

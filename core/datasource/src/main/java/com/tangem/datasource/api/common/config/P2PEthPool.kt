@@ -1,4 +1,4 @@
-package com.tangem.datasource.api.common.config
+﻿package com.tangem.datasource.api.common.config
 
 import com.tangem.datasource.BuildConfig
 import com.tangem.domain.staking.model.ethpool.P2PEthPoolStakingConfig
@@ -46,7 +46,7 @@ internal class P2PEthPool(
     private fun createMockEnvironment(): ApiEnvironmentConfig {
         return ApiEnvironmentConfig(
             environment = ApiEnvironment.MOCK,
-            baseUrl = "[REDACTED_ENV_URL]",
+            baseUrl = "https://api.tangem.org/",
             headers = createHeaders(),
         )
     }

@@ -1,4 +1,4 @@
-package com.tangem.datasource.utils
+﻿package com.tangem.datasource.utils
 
 import com.tangem.utils.logging.TangemLogger
 import okhttp3.Interceptor
@@ -28,7 +28,7 @@ class WireMockRedirectInterceptor : Interceptor {
     }
 
     companion object {
-        private const val WIREMOCK_REMOTE_URL = "[REDACTED_ENV_URL]"
+        private const val WIREMOCK_REMOTE_URL = "https://redacted.tangem.org/"
 
         /**
          * Override base URL for WireMock requests.

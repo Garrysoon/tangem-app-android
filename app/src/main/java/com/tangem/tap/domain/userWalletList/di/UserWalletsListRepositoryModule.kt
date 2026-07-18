@@ -8,6 +8,7 @@ import com.tangem.common.json.TangemSdkAdapter
 import com.tangem.common.services.secure.SecureStorage
 import com.tangem.core.analytics.api.AnalyticsEventHandler
 import com.tangem.core.analytics.utils.TrackingContextProxy
+import com.tangem.datasource.local.db.TangemDatabase
 import com.tangem.datasource.local.preferences.AppPreferencesStore
 import com.tangem.domain.common.wallets.UserWalletSelectedHandler
 import com.tangem.domain.common.wallets.UserWalletsListRepository
@@ -26,6 +27,7 @@ import com.tangem.tap.domain.userWalletList.repository.DefaultUserWalletsListRep
 import com.tangem.tap.domain.userWalletList.repository.DelegatedKeystoreManager
 import com.tangem.tap.domain.userWalletList.repository.UserWalletEncryptionKeysRepository
 import com.tangem.tap.domain.userWalletList.repository.UserWalletsKeysStoreDecorator
+import com.tangem.tap.domain.userWalletList.repository.WalletRoomDbCleanupHelper
 import com.tangem.tap.domain.userWalletList.repository.implementation.DefaultSelectedUserWalletRepository
 import com.tangem.tap.domain.userWalletList.repository.implementation.DefaultUserWalletsPublicInformationRepository
 import com.tangem.tap.domain.userWalletList.repository.implementation.DefaultUserWalletsSensitiveInformationRepository
@@ -59,6 +61,7 @@ internal object UserWalletsListRepositoryModule {
         hotWalletRepository: HotWalletRepository,
         mobileWalletPromoRepository: MobileWalletPromoRepository,
         userWalletSelectedHandler: Lazy<UserWalletSelectedHandler>,
+        tangemDatabase: TangemDatabase,
     ): UserWalletsListRepository {
         val moshi = buildMoshi()
         val secureStorage = buildSecureStorage(applicationContext = applicationContext)
@@ -111,6 +114,9 @@ internal object UserWalletsListRepositoryModule {
             hotWalletRepository = hotWalletRepository,
             mobileWalletPromoRepository = mobileWalletPromoRepository,
             userWalletSelectedHandler = userWalletSelectedHandler,
+            walletRoomDbCleanupHelper = WalletRoomDbCleanupHelper(
+                database = tangemDatabase,
+            ),
         )
     }
 

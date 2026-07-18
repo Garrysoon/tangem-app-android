@@ -1513,6 +1513,10 @@
   <string name="settings_card_settings_footer">Prepare to scan card or ring you want to set up.</string>
   <string name="settings_forget_wallet">Forget wallet</string>
   <string name="settings_forget_wallet_footer">This will remove the wallet from the application. The wallet itself can be added again.</string>
+  <string name="settings_remove_wallet_from_card">Remove wallet from card</string>
+  <string name="settings_remove_wallet_from_card_footer">This will permanently remove the wallet from the SecurityOS card</string>
+  <string name="user_wallet_list_remove_from_card_prompt">This will permanently remove the wallet from the card. You will need to scan your card and enter PIN to confirm.</string>
+  <string name="settings_remove_wallet_from_card_success">Wallet successfully removed from card</string>
   <string name="settings_upgrade_banner_advantage_feature_title">Simple to use</string>
   <string name="settings_upgrade_banner_description">Keeps your crypto safe and offline. Slim as a credit card, safer than a bank vault.</string>
   <string name="settings_upgrade_banner_seed_phrase_feature_title">No seed phrase</string>

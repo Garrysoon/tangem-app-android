@@ -6,8 +6,12 @@ import com.tangem.data.common.network.NetworkFactory
 import com.tangem.data.express.converter.ExpressErrorConverter
 import com.tangem.data.swap.DefaultSwapErrorResolver
 import com.tangem.data.swap.DefaultSwapRepositoryV2
+import com.tangem.data.swap.RaksaSwapRepositoryV2
 import com.tangem.data.swap.DefaultSwapTransactionRepository
 import com.tangem.datasource.api.express.TangemExpressApi
+import com.tangem.datasource.api.swap.KyberSwapApi
+import com.tangem.datasource.api.swap.ParaswapApi
+import com.tangem.datasource.api.swap.ThorchainApi
 import com.tangem.datasource.api.express.models.response.ExpressErrorResponse
 import com.tangem.datasource.crypto.DataSignatureVerifier
 import com.tangem.datasource.di.NetworkMoshi
@@ -42,24 +46,14 @@ internal object SwapDataModule {
     @Provides
     @Singleton
     fun provideSwapRepository(
-        tangemExpressApi: TangemExpressApi,
-        expressRepository: ExpressRepository,
+        paraswapApi: ParaswapApi,
+        kyberSwapApi: KyberSwapApi,
         coroutineDispatcher: CoroutineDispatcherProvider,
-        appPreferencesStore: AppPreferencesStore,
-        dataSignatureVerifier: DataSignatureVerifier,
-        singleQuoteStatusSupplier: SingleQuoteStatusSupplier,
-        singleQuoteStatusFetcher: SingleQuoteStatusFetcher,
-        @NetworkMoshi moshi: Moshi,
     ): SwapRepositoryV2 {
-        return DefaultSwapRepositoryV2(
-            tangemExpressApi = tangemExpressApi,
-            expressRepository = expressRepository,
+        return RaksaSwapRepositoryV2(
+            paraswapApi = paraswapApi,
+            kyberSwapApi = kyberSwapApi,
             coroutineDispatcher = coroutineDispatcher,
-            appPreferencesStore = appPreferencesStore,
-            dataSignatureVerifier = dataSignatureVerifier,
-            moshi = moshi,
-            singleQuoteStatusSupplier = singleQuoteStatusSupplier,
-            singleQuoteStatusFetcher = singleQuoteStatusFetcher,
         )
     }
 

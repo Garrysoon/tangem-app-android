@@ -16,7 +16,7 @@ internal class TangemDerivationStyleProvider(
             !card.settings.isHDWalletAllowed -> null
             firstBatchesOfWallet1(card) -> DerivationStyle.V1
             card.isWallet2 -> DerivationStyle.V3
-            else -> DerivationStyle.V2
+            else -> DerivationStyle.V3 // default to BIP84 (m/84'/0'/0'/0/0) for all unrecognized cards
         }
     }
 

@@ -5,6 +5,8 @@ import com.tangem.data.common.currency.ResponseCryptoCurrenciesFactory
 import com.tangem.data.common.network.NetworkFactory
 import com.tangem.datasource.api.express.TangemExpressApi
 import com.tangem.datasource.api.express.models.response.ExpressErrorResponse
+import com.tangem.datasource.api.swap.AcrossBridgeApi
+import com.tangem.datasource.api.swap.ThorchainApi
 import com.tangem.datasource.api.surveysparrow.SurveySparrowApi
 import com.tangem.datasource.crypto.DataSignatureVerifier
 import com.tangem.datasource.di.NetworkMoshi
@@ -15,6 +17,7 @@ import com.tangem.domain.exchange.RampStateManager
 import com.tangem.domain.walletmanager.WalletManagersFacade
 import com.tangem.feature.swap.DefaultSwapFeedbackRepository
 import com.tangem.feature.swap.DefaultSwapRepository
+import com.tangem.feature.swap.RaksaSwapRepository
 import com.tangem.feature.swap.NoOpSwapFeedbackRepository
 import com.tangem.feature.swap.DefaultSwapTransactionRepository
 import com.tangem.feature.swap.converters.ErrorsDataConverter
@@ -35,24 +38,18 @@ internal class SwapDataModule {
     @Provides
     @Singleton
     internal fun provideSwapRepository(
-        tangemExpressApi: TangemExpressApi,
+        paraswapApi: com.tangem.datasource.api.swap.ParaswapApi,
+        kyberSwapApi: com.tangem.datasource.api.swap.KyberSwapApi,
+        acrossBridgeApi: AcrossBridgeApi,
+        thorchainApi: ThorchainApi,
         coroutineDispatcher: CoroutineDispatcherProvider,
-        dataSignature: DataSignatureVerifier,
-        walletManagerFacade: WalletManagersFacade,
-        errorsDataConverter: ErrorsDataConverter,
-        @NetworkMoshi moshi: Moshi,
-        appPreferencesStore: AppPreferencesStore,
-        rampStateManager: RampStateManager,
     ): SwapRepository {
-        return DefaultSwapRepository(
-            tangemExpressApi = tangemExpressApi,
+        return RaksaSwapRepository(
+            paraswapApi = paraswapApi,
+            kyberSwapApi = kyberSwapApi,
+            acrossBridgeApi = acrossBridgeApi,
+            thorchainApi = thorchainApi,
             coroutineDispatcher = coroutineDispatcher,
-            walletManagersFacade = walletManagerFacade,
-            errorsDataConverter = errorsDataConverter,
-            dataSignatureVerifier = dataSignature,
-            moshi = moshi,
-            appPreferencesStore = appPreferencesStore,
-            rampStateManager = rampStateManager,
         )
     }
 

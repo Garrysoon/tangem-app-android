@@ -2,14 +2,12 @@ package com.tangem.tap.di
 
 import android.content.Context
 import com.tangem.core.analytics.api.AnalyticsErrorHandler
-import com.tangem.domain.card.BuildConfig
 import com.tangem.domain.card.repository.CardRepository
 import com.tangem.domain.card.repository.CardSdkConfigRepository
 import com.tangem.domain.dynamicaddresses.DynamicAddressesFeatureToggles
 import com.tangem.features.onboarding.v2.OnboardingV2FeatureToggles
 import com.tangem.sdk.api.TangemSdkManager
 import com.tangem.tap.domain.sdk.impl.DefaultTangemSdkManager
-import com.tangem.tap.domain.sdk.impl.MockTangemSdkManager
 import com.tangem.tap.domain.tasks.product.BlockchainToDeriveFinder
 import com.tangem.tap.domain.tasks.visa.TangemPayGenerateAddressAndSignChallengeTask
 import com.tangem.tap.domain.tasks.visa.VisaCardActivationTask
@@ -39,21 +37,17 @@ internal class TangemSdkManagerModule {
         analyticsErrorHandler: AnalyticsErrorHandler,
         cardRepository: CardRepository,
     ): TangemSdkManager {
-        return if (BuildConfig.MOCK_DATA_SOURCE) {
-            MockTangemSdkManager(resources = context.resources)
-        } else {
-            DefaultTangemSdkManager(
-                cardSdkConfigRepository = cardSdkConfigRepository,
-                resources = context.resources,
-                visaCardScanHandler = visaCardScanHandler,
-                visaCardActivationTaskFactory = visaCardActivationTaskFactory,
-                tangemPayChallengeTaskFactory = tangemPayChallengeTaskFactory,
-                onboardingV2FeatureToggles = onboardingV2FeatureToggles,
-                dynamicAddressesFeatureToggles = dynamicAddressesFeatureToggles,
-                blockchainToDeriveFinder = blockchainToDeriveFinder,
-                analyticsErrorHandler = analyticsErrorHandler,
-                cardRepository = cardRepository,
-            )
-        }
+        return DefaultTangemSdkManager(
+            cardSdkConfigRepository = cardSdkConfigRepository,
+            resources = context.resources,
+            visaCardScanHandler = visaCardScanHandler,
+            visaCardActivationTaskFactory = visaCardActivationTaskFactory,
+            tangemPayChallengeTaskFactory = tangemPayChallengeTaskFactory,
+            onboardingV2FeatureToggles = onboardingV2FeatureToggles,
+            dynamicAddressesFeatureToggles = dynamicAddressesFeatureToggles,
+            blockchainToDeriveFinder = blockchainToDeriveFinder,
+            analyticsErrorHandler = analyticsErrorHandler,
+            cardRepository = cardRepository,
+        )
     }
 }

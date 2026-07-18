@@ -11,6 +11,11 @@ import com.tangem.datasource.api.common.config.managers.DevApiConfigsManager
 import com.tangem.datasource.api.common.config.managers.MockApiConfigsManager
 import com.tangem.datasource.api.common.config.managers.ProdApiConfigsManager
 import com.tangem.datasource.api.express.TangemExpressApi
+import com.tangem.datasource.api.raksa.RaksaApi
+import com.tangem.datasource.api.swap.AcrossBridgeApi
+import com.tangem.datasource.api.swap.KyberSwapApi
+import com.tangem.datasource.api.swap.ThorchainApi
+import com.tangem.datasource.api.swap.ParaswapApi
 import com.tangem.datasource.api.markets.TangemTechMarketsApi
 import com.tangem.datasource.api.moonpay.MoonPayApi
 import com.tangem.datasource.api.news.NewsApi
@@ -60,6 +65,74 @@ internal object NetworkModule {
         return retrofitApiBuilder.build(
             apiConfigId = ApiConfig.ID.Express,
             applyTimeoutAnnotations = false,
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideParaswapApi(retrofitApiBuilder: RetrofitApiBuilder): ParaswapApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Paraswap,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = TIMEOUT_60_SECONDS,
+                connectTimeoutSeconds = TIMEOUT_60_SECONDS,
+                readTimeoutSeconds = TIMEOUT_60_SECONDS,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideKyberSwapApi(retrofitApiBuilder: RetrofitApiBuilder): KyberSwapApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.KyberSwap,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = TIMEOUT_60_SECONDS,
+                connectTimeoutSeconds = TIMEOUT_60_SECONDS,
+                readTimeoutSeconds = TIMEOUT_60_SECONDS,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideAcrossApi(retrofitApiBuilder: RetrofitApiBuilder): AcrossBridgeApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Across,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = 30L,
+                connectTimeoutSeconds = 30L,
+                readTimeoutSeconds = 30L,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideThorchainApi(retrofitApiBuilder: RetrofitApiBuilder): ThorchainApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Thorchain,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = 30L,
+                connectTimeoutSeconds = 30L,
+                readTimeoutSeconds = 30L,
+            ),
+        )
+    }
+
+    fun provideRaksaApi(retrofitApiBuilder: RetrofitApiBuilder): RaksaApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Raksa,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = TIMEOUT_60_SECONDS,
+                connectTimeoutSeconds = TIMEOUT_60_SECONDS,
+                readTimeoutSeconds = TIMEOUT_60_SECONDS,
+            ),
         )
     }
 

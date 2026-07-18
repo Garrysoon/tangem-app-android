@@ -27,4 +27,7 @@ interface UserWalletDao {
 
     @Query("SELECT * FROM UserWalletEntity WHERE id = :id")
     fun observeById(id: String): Flow<UserWalletEntity>
+
+    @Query("DELETE FROM UserWalletEntity WHERE id = :id")
+    suspend fun deleteById(id: String)
 }

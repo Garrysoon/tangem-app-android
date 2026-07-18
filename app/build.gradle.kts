@@ -185,6 +185,8 @@ dependencies {
     implementation(projects.core.res)
     implementation(projects.core.ui)
     implementation(projects.core.datasource)
+    implementation(deps.room.runtime)
+    implementation(deps.room.ktx)
     implementation(projects.core.utils)
     implementation(projects.core.decompose)
     implementation(projects.core.error.ext)
