@@ -113,4 +113,10 @@ internal object ApiConfigsModule {
     fun provideSurveySparrowConfig(environmentConfig: EnvironmentConfig): ApiConfig {
         return SurveySparrow(environmentConfig)
     }
+
+    @Provides
+    @IntoSet
+    fun provideRaksaConfig(): ApiConfig {
+        return Raksa()
+    }
 }

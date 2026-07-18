@@ -11,6 +11,7 @@ import com.tangem.datasource.api.common.config.managers.DevApiConfigsManager
 import com.tangem.datasource.api.common.config.managers.MockApiConfigsManager
 import com.tangem.datasource.api.common.config.managers.ProdApiConfigsManager
 import com.tangem.datasource.api.express.TangemExpressApi
+import com.tangem.datasource.api.raksa.RaksaApi
 import com.tangem.datasource.api.markets.TangemTechMarketsApi
 import com.tangem.datasource.api.moonpay.MoonPayApi
 import com.tangem.datasource.api.news.NewsApi
@@ -60,6 +61,20 @@ internal object NetworkModule {
         return retrofitApiBuilder.build(
             apiConfigId = ApiConfig.ID.Express,
             applyTimeoutAnnotations = false,
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideRaksaApi(retrofitApiBuilder: RetrofitApiBuilder): RaksaApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Raksa,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = TIMEOUT_60_SECONDS,
+                connectTimeoutSeconds = TIMEOUT_60_SECONDS,
+                readTimeoutSeconds = TIMEOUT_60_SECONDS,
+            ),
         )
     }
 
