@@ -78,72 +78,62 @@ internal class RaksaSwapRepository @Inject constructor(
         rateType: RateType,
     ): Either<ExpressDataError, QuoteModel> = withContext(coroutineDispatcher.io) {
         try {
-            // Query all DEXes in parallel
-            coroutineScope {
-                val paraswapDeferred = async {
-                    runCatching {
-                        val resp = paraswapApi.getPrices(
-                            srcToken = fromContractAddress,
-                            destToken = toContractAddress,
-                            amount = toRawAmount(fromAmount, fromDecimals),
-                            srcDecimals = fromDecimals,
-                            destDecimals = toDecimals,
-                            network = toChainId(fromNetwork),
-                        )
-                        val route = resp.priceRoute ?: throw RuntimeException(resp.error ?: "paraswap error")
-                        DexResult(
-                            source = "paraswap",
-                            amountOutRaw = route.destAmount,
-                            gas = route.gasCost?.toLongOrNull(),
-                            allowanceContract = route.tokenTransferProxy,
-                        )
-                    }
-                }
-                val kyberDeferred = async {
-                    runCatching {
-                        val slug = DexTokenList.kyberChainSlugs[fromNetwork.lowercase()]
-                            ?: throw RuntimeException("kyber: unknown chain $fromNetwork")
-                        val resp = kyberSwapApi.getRoutes(
-                            chain = slug,
-                            tokenIn = fromContractAddress,
-                            tokenOut = toContractAddress,
-                            amountIn = toRawAmount(fromAmount, fromDecimals),
-                        )
-                        if (resp.code != 0) throw RuntimeException(resp.message ?: "kyber error")
-                        val summary = resp.data?.routeSummary
-                            ?: throw RuntimeException("kyber: missing routeSummary")
-                        DexResult(
-                            source = "kyberswap",
-                            amountOutRaw = summary.amountOut,
-                            gas = summary.gas?.toLongOrNull(),
-                            allowanceContract = null,
-                        )
-                    }
-                }
-                val results = listOf(paraswapDeferred, kyberDeferred).awaitAll()
-                    .filter { it.isSuccess }
-                    .map { it.getOrThrow() }
+            val rawAmount = toRawAmount(fromAmount, fromDecimals)
+            val results = mutableListOf<DexResult>()
 
-                if (results.isEmpty()) {
-                    return@coroutineScope ExpressDataError.NoExchangeData.left()
+            // Paraswap
+            try {
+                val resp = paraswapApi.getPrices(
+                    srcToken = fromContractAddress,
+                    destToken = toContractAddress,
+                    amount = rawAmount,
+                    srcDecimals = fromDecimals,
+                    destDecimals = toDecimals,
+                    network = toChainId(fromNetwork),
+                )
+                val route = resp.priceRoute
+                if (route != null) {
+                    results.add(DexResult(
+                        source = "paraswap",
+                        amountOutRaw = route.destAmount,
+                        gas = null,
+                        allowanceContract = route.tokenTransferProxy,
+                    ))
                 }
+            } catch (_: Exception) {}
 
-                val best = results.maxByOrNull {
-                    it.amountOutRaw.toBigDecimalOrNull() ?: BigDecimal.ZERO
-                } ?: results.first()
+            // KyberSwap
+            try {
+                val slug = DexTokenList.kyberChainSlugs[fromNetwork.lowercase()] ?: return@withContext ExpressDataError.UnknownError().left()
+                val resp = kyberSwapApi.getRoutes(slug, fromContractAddress, toContractAddress, rawAmount)
+                val summary = resp.data?.routeSummary
+                if (resp.code == 0 && summary != null) {
+                    results.add(DexResult(
+                        source = "kyberswap",
+                        amountOutRaw = summary.amountOut,
+                        gas = summary.gas?.toLongOrNull(),
+                        allowanceContract = null,
+                    ))
+                }
+            } catch (_: Exception) {}
 
-                val amountOut = rawToAmount(best.amountOutRaw, toDecimals)
-                QuoteModel(
-                    toTokenAmount = SwapAmount(amountOut, toDecimals),
-                    allowanceContract = best.allowanceContract,
-                    txType = ExpressTxType.DEX,
-                ).right()
+            if (results.isEmpty()) {
+                return@withContext ExpressDataError.UnknownError().left()
             }
+
+            val best = results.maxByOrNull { it.amountOutRaw.toBigDecimalOrNull() ?: BigDecimal.ZERO }
+                ?: results.first()
+            val amountOut = rawToAmount(best.amountOutRaw, toDecimals)
+
+            QuoteModel(
+                toTokenAmount = SwapAmount(amountOut, toDecimals),
+                allowanceContract = best.allowanceContract,
+                txType = ExpressTxType.SWAP,
+            ).right()
         } catch (e: Exception) {
-            ExpressDataError.NoExchangeData.left()
+            ExpressDataError.UnknownError().left()
         }
     }
-
     override suspend fun getExchangeData(
         userWallet: UserWallet,
         fromContractAddress: String,
@@ -174,7 +164,7 @@ internal class RaksaSwapRepository @Inject constructor(
                 toTokenAmount = SwapAmount(amountOut, toDecimals),
                 transaction = ExpressTransactionModel.DEX(
                     fromAmount = SwapAmount(fromAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO, fromDecimals),
-                    toTokenAmount = SwapAmount(amountOut, toDecimals),
+                    toAmount = SwapAmount(amountOut, toDecimals),
                     txValue = tx.value,
                     txId = "",
                     txTo = tx.to,
@@ -188,7 +178,7 @@ internal class RaksaSwapRepository @Inject constructor(
             )
             model.right()
         } catch (e: Exception) {
-            ExpressDataError.NoExchangeData.left()
+            ExpressDataError.UnknownError().left()
         }
     }
 
@@ -196,7 +186,7 @@ internal class RaksaSwapRepository @Inject constructor(
         userWallet: UserWallet?,
         userWalletId: UserWalletId,
         txId: String,
-    ): Either<UnknownError, ExchangeStatusModel> = UnknownError(null).left()
+    ): Either<UnknownError, ExchangeStatusModel> = UnknownError().left()
 
     override suspend fun exchangeSent(
         userWallet: UserWallet,
