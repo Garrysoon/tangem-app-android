@@ -43,6 +43,11 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
         slippage = null, rateTypes = listOf(ExpressRateType.Float),
     )
     private val dexProviders = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"))
+    private val thorchainProvider = ExpressProvider(
+        providerId = "thorchain", name = "THORChain", type = ExpressProviderType.DEX,
+        imageLarge = "", termsOfUse = null, privacyPolicy = null,
+        slippage = null, rateTypes = listOf(ExpressRateType.Float),
+    )
     private val bridgeProvider = ExpressProvider(
         providerId = "across", name = "Across Bridge", type = ExpressProviderType.DEX,
         imageLarge = "", termsOfUse = null, privacyPolicy = null,
@@ -66,11 +71,18 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
                 providers = p,
             ))
         } else if (needsBridge(fromChain, toChain)) {
-            // Cross-chain: Across bridge
+            // Cross-chain EVM: Across bridge
             listOf(SwapPairModel(
                 from = primarySwapCurrencyStatus.status,
                 to = secondarySwapCurrencyStatus.status,
                 providers = listOf(bridgeProvider),
+            ))
+        } else if (isUtxoBridge(fromChain, toChain)) {
+            // Cross-chain BTC/LTC: THORChain
+            listOf(SwapPairModel(
+                from = primarySwapCurrencyStatus.status,
+                to = secondarySwapCurrencyStatus.status,
+                providers = listOf(thorchainProvider),
             ))
         } else {
             emptyList()
@@ -261,6 +273,13 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
     private val DEX_TOKENS_BSC = listOf("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", "0x55d398326f99059fF775485246999027B3197955", "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c")
 
     private val ACROSS_SUPPORTED_CHAINS = setOf("ethereum", "arbitrum", "polygon", "optimism", "base", "bsc")
+
+    private fun isUtxoBridge(fromChain: String, toChain: String): Boolean {
+        val utxo = setOf("bitcoin", "litecoin")
+        val evm = ACROSS_SUPPORTED_CHAINS
+        return (fromChain.lowercase() in utxo && toChain.lowercase() in evm) ||
+               (fromChain.lowercase() in evm && toChain.lowercase() in utxo)
+    }
 
     private fun needsBridge(fromChain: String, toChain: String): Boolean {
         return fromChain.lowercase() != toChain.lowercase() &&

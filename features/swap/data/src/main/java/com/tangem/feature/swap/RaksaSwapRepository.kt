@@ -69,8 +69,8 @@ internal class RaksaSwapRepository @Inject constructor(
             val safeFromAddr = if (fromContractAddress.isBlank() || fromContractAddress == "0" || fromContractAddress == "0x") NATIVE else fromContractAddress
             val safeToAddr = if (toContractAddress.isBlank() || toContractAddress == "0" || toContractAddress == "0x") NATIVE else toContractAddress
 
-            if (fromNetwork.lowercase() != toNetwork.lowercase()) {
-                val isUtxo = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin")
+            if (fromNetwork.lowercase() != toNetwork.lowercase() || providerId.lowercase() == "thorchain") {
+                val isUtxo = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin") || toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
                 if (isUtxo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
                 return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
             }
@@ -116,6 +116,16 @@ override suspend fun getExchangeStatus(userWallet: UserWallet?, userWalletId: Us
     override suspend fun getStoredSwapUiMode(): SwapUIMode? = null
     override suspend fun storeSwapUiMode(mode: SwapUIMode) {}
 
+    private fun thorchainAssetByAddress(chain: String, address: String): String? {
+        val c = chain.lowercase().replace("-one", "")
+        val addr = address.lowercase()
+        val known = mapOf(
+            "0xdac17f958d2ee523a2206206994597c13d831ec7" to "ETH.USDT-0xdAC17F958D2ee523a2206206994597C13D831ec7",
+            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" to "ETH.USDC-0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        )
+        return known[addr]
+    }
+
     private fun toChainId(chain: String): Int = CHAIN_IDS[chain.lowercase()] ?: 1
     private fun rawToAmount(raw: String, decimals: Int): BigDecimal = (raw.toBigDecimalOrNull() ?: BigDecimal.ZERO).movePointLeft(decimals)
 
@@ -135,15 +145,19 @@ override suspend fun getExchangeStatus(userWallet: UserWallet?, userWalletId: Us
     private suspend fun fetchThorchainQuote(fromAddr: String, fromChain: String, toAddr: String, toChain: String, amount: String, fromDec: Int, toDec: Int): Either<ExpressDataError, QuoteModel> {
         try {
             val fromSymbol = when { fromChain.lowercase().contains("bitcoin") -> "BTC"; fromChain.lowercase().contains("litecoin") -> "LTC"; else -> "ETH" }
-            val toSymbol = when { toChain.lowercase().contains("bitcoin") -> "BTC"; toChain.lowercase().contains("ethereum") -> "ETH"; else -> "ETH" }
+            // Resolve THORChain asset from contract address
+            val toAsset = thorchainAssetByAddress(toChain, toAddr) ?: thorchainAsset(toChain, when {
+                toChain.lowercase().contains("bitcoin") -> "BTC"; toChain.lowercase().contains("ethereum") -> "ETH"; else -> "ETH"
+            })
+            if (toAsset == null) return ExpressDataError.UnknownError().left()
             val fromAsset = thorchainAsset(fromChain, fromSymbol) ?: return ExpressDataError.UnknownError().left()
-            val toAsset = thorchainAsset(toChain, toSymbol) ?: return ExpressDataError.UnknownError().left()
-            val rawAmount = amount  // already in raw units from toStringWithRightOffset()
+            val rawAmount = amount
             val resp = thorchainApi.getQuote(rawAmount, fromAsset, toAsset)
             if (resp.error != null) return ExpressDataError.UnknownError().left()
             val expectedOut = resp.expectedAmountOut?.toLongOrNull() ?: 0L
-            val amountOutHuman = rawToAmount(expectedOut.toString(), toDec)
-            return QuoteModel(toTokenAmount = SwapAmount(amountOutHuman, toDec), allowanceContract = null, txType = ExpressTxType.SWAP).right()
+            // THORChain returns amounts in 8 decimal precision
+            val amountOutHuman = rawToAmount(expectedOut.toString(), 8)
+            return QuoteModel(toTokenAmount = SwapAmount(amountOutHuman, 8), allowanceContract = null, txType = ExpressTxType.SWAP).right()
         } catch (e: Exception) { return ExpressDataError.UnknownError().left() }
     }
 
