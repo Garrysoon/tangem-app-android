@@ -9,6 +9,25 @@ object DexTokenList {
     const val NATIVE_TOKEN = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
     const val ZERO_TOKEN = "0x0000000000000000000000000000000000000000"
 
+
+
+    /** Chains supported by Paraswap + KyberSwap DEXes */
+
+    val SUPPORTED_CHAINS = setOf("ethereum", "arbitrum", "optimism", "base", "polygon", "bsc")
+
+
+
+    /** Check if a network rawId maps to a supported DEX chain */
+
+    fun isChainSupported(networkRawId: String): Boolean {
+
+        val id = networkRawId.lowercase()
+
+        return SUPPORTED_CHAINS.any { id.contains(it) }
+
+    }
+
+
     data class DexToken(
         val symbol: String,
         val address: String,

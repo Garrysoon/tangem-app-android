@@ -77,6 +77,14 @@ internal class RaksaSwapRepository @Inject constructor(
         providerId: String,
         rateType: RateType,
     ): Either<ExpressDataError, QuoteModel> = withContext(coroutineDispatcher.io) {
+        // Check if both tokens are on the same supported chain
+        if (!DexTokenList.isChainSupported(fromNetwork) || !DexTokenList.isChainSupported(toNetwork)) {
+            return@withContext ExpressDataError.UnknownError().left()
+        }
+        // Cross-chain not supported by DEX
+        if (fromNetwork.lowercase() != toNetwork.lowercase()) {
+            return@withContext ExpressDataError.UnknownError().left()
+        }
         try {
             val rawAmount = toRawAmount(fromAmount, fromDecimals)
             val results = mutableListOf<DexResult>()
@@ -152,6 +160,13 @@ internal class RaksaSwapRepository @Inject constructor(
         refundExtraId: String?,
         toExtraId: String?,
     ): Either<ExpressDataError, SwapDataModel> = withContext(coroutineDispatcher.io) {
+        // Check chain support
+        if (!DexTokenList.isChainSupported(fromNetwork) || !DexTokenList.isChainSupported(toNetwork)) {
+            return@withContext ExpressDataError.UnknownError().left()
+        }
+        if (fromNetwork.lowercase() != toNetwork.lowercase()) {
+            return@withContext ExpressDataError.UnknownError().left()
+        }
         try {
             val rawAmount = toRawAmount(fromAmount, fromDecimals)
             val tx = when (providerId.lowercase()) {

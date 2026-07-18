@@ -50,6 +50,10 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
         filterProviderTypes: List<ExpressProviderType>,
         swapTxType: SwapTxType,
     ): List<SwapPairModel> = withContext(coroutineDispatcher.default) {
+        // Check both tokens are on the same supported EVM chain
+        val fromChain = chainOf(primarySwapCurrencyStatus.currency)
+        val toChain = chainOf(secondarySwapCurrencyStatus.currency)
+        if (fromChain != toChain) return@withContext emptyList()
         val p = providers.filter { it.type in filterProviderTypes }
         listOf(SwapPairModel(
             from = primarySwapCurrencyStatus.status,
