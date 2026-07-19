@@ -149,4 +149,16 @@ internal object ApiConfigsModule {
     fun provideLimitOrderConfig(): ApiConfig {
         return LimitOrder()
     }
+
+    @Provides
+    @IntoSet
+    fun provideOdosConfig(): ApiConfig {
+        return Odos()
+    }
+
+    @Provides
+    @IntoSet
+    fun provideCoWSwapConfig(): ApiConfig {
+        return CoWSwap()
+    }
 }

@@ -42,6 +42,8 @@ internal class SwapDataModule {
         kyberSwapApi: com.tangem.datasource.api.swap.KyberSwapApi,
         acrossBridgeApi: AcrossBridgeApi,
         thorchainApi: ThorchainApi,
+        odosApi: com.tangem.datasource.api.swap.OdosApi,
+        coWSwapApi: com.tangem.datasource.api.swap.CoWSwapApi,
         coroutineDispatcher: CoroutineDispatcherProvider,
     ): SwapRepository {
         return RaksaSwapRepository(
@@ -49,6 +51,8 @@ internal class SwapDataModule {
             kyberSwapApi = kyberSwapApi,
             acrossBridgeApi = acrossBridgeApi,
             thorchainApi = thorchainApi,
+            odosApi = odosApi,
+            coWSwapApi = coWSwapApi,
             coroutineDispatcher = coroutineDispatcher,
         )
     }

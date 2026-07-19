@@ -1,4 +1,4 @@
-package com.tangem.feature.swap
+﻿package com.tangem.feature.swap
 
 import arrow.core.Either
 import arrow.core.left
@@ -28,6 +28,8 @@ internal class RaksaSwapRepository @Inject constructor(
     private val kyberSwapApi: KyberSwapApi,
     private val thorchainApi: ThorchainApi,
     private val acrossBridgeApi: AcrossBridgeApi,
+    private val odosApi: com.tangem.datasource.api.swap.OdosApi,
+    private val coWSwapApi: com.tangem.datasource.api.swap.CoWSwapApi,
     private val coroutineDispatcher: CoroutineDispatcherProvider,
 ) : SwapRepository {
 
@@ -100,15 +102,60 @@ internal class RaksaSwapRepository @Inject constructor(
                 }
             } catch (_: Exception) {}
             try {
-                val slug = KYBER_SLUGS[fromNetwork.lowercase()] ?: return@withContext ExpressDataError.UnknownError().left()
-                val resp = kyberSwapApi.getRoutes(slug, safeFromAddr, safeToAddr, fromAmount)
-                if (resp.code == 0) resp.data?.routeSummary?.let { results.add(DexResult("kyberswap", it.amountOut, it.gas?.toLongOrNull(), null)) }
+                val slug = KYBER_SLUGS[fromNetwork.lowercase()]
+                if (slug != null) {
+                    val resp = kyberSwapApi.getRoutes(slug, safeFromAddr, safeToAddr, fromAmount)
+                    if (resp.code == 0) resp.data?.routeSummary?.let { results.add(DexResult("kyberswap", it.amountOut, it.gas?.toLongOrNull(), null)) }
+                }
+            } catch (_: Exception) {}
+
+            // Odos DEX aggregator
+            try {
+                val odosChainId = CHAIN_IDS[normalizeChainId(fromNetwork)] ?: 1
+                val odosResp = odosApi.getQuote(
+                    com.tangem.datasource.api.swap.OdosQuoteRequest(
+                        chainId = odosChainId,
+                        inputTokens = listOf(com.tangem.datasource.api.swap.OdosTokenAmount(safeFromAddr, fromAmount)),
+                        outputTokens = listOf(com.tangem.datasource.api.swap.OdosTokenProportion(safeToAddr, 1f)),
+                        slippageLimitPercent = 0.5f,
+                        userAddr = null,
+                    )
+                )
+                val odosOut = odosResp.outAmounts?.firstOrNull()
+                if (odosOut != null) {
+                    results.add(DexResult("odos", odosOut, null, null))
+                }
+            } catch (_: Exception) {}
+
+            // CoW Swap (gasless, intent-based)
+            try {
+                val cowNetwork = when(normalizeChainId(fromNetwork)) {
+                    "ethereum" -> "mainnet"
+                    "arbitrum" -> "arbitrum"
+                    "gnosis" -> "xdai"
+                    else -> "mainnet"
+                }
+                val cowResp = coWSwapApi.getQuote(
+                    cowNetwork,
+                    com.tangem.datasource.api.swap.CoWQuoteRequest(
+                        sellToken = safeFromAddr,
+                        buyToken = safeToAddr,
+                        sellAmount = fromAmount,
+                        kind = "sell",
+                        from = null,
+                    )
+                )
+                val buyAmount = cowResp.quote.buyAmount
+                if (buyAmount.isNotEmpty()) {
+                    results.add(DexResult("cowswap", buyAmount, null, null))
+                }
             } catch (_: Exception) {}
 
             if (results.isEmpty()) return@withContext ExpressDataError.UnknownError().left()
             val best = results.maxByOrNull { it.amountOutRaw.toBigDecimalOrNull() ?: BigDecimal.ZERO } ?: results.first()
             val amountOut = rawToAmount(best.amountOutRaw, toDecimals)
-            QuoteModel(toTokenAmount = SwapAmount(amountOut, toDecimals), allowanceContract = best.allowanceContract, txType = ExpressTxType.SWAP).right()
+            android.util.Log.d("RaksaSwap", "Best provider: " + best.source)
+            QuoteModel(toTokenAmount = SwapAmount(amountOut, toDecimals), allowanceContract = best.allowanceContract, txType = ExpressTxType.SWAP, providerId = best.source).right()
         } catch (e: Exception) { ExpressDataError.UnknownError().left() }
     }
 
@@ -129,6 +176,10 @@ internal class RaksaSwapRepository @Inject constructor(
             android.util.Log.d("RaksaSwap", "getExchangeData: provider=$providerId from=$safeFromAddr to=$safeToAddr amount=$fromAmount network=$fromNetwork")
 
             when {
+                providerId.lowercase() == "odos" -> buildOdosTx(
+                    safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals,
+                    fromNetwork, fromAddress, toAddress,
+                )
                 providerId.lowercase() == "paraswap" -> buildParaswapTx(
                     safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals,
                     fromNetwork, fromAddress, toAddress,
@@ -141,6 +192,10 @@ internal class RaksaSwapRepository @Inject constructor(
                     safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount,
                     fromDecimals, toDecimals, fromAddress, toAddress,
                 )
+                providerId.lowercase() == "cowswap" -> {
+                    android.util.Log.w("RaksaSwap", "CoW Swap tx building not implemented")
+                    ExpressDataError.UnknownError().left()
+                }
                 providerId.lowercase() == "across" -> buildAcrossTx(
                     safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals,
                     fromNetwork, toNetwork, fromAddress, toAddress,
@@ -191,7 +246,7 @@ internal class RaksaSwapRepository @Inject constructor(
             transaction = com.tangem.feature.swap.domain.models.domain.ExpressTransactionModel.DEX(
                 fromAmount = SwapAmount(amount.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO, fromDec),
                 toAmount = SwapAmount(amountOut, toDec),
-                txValue = txResp.value,
+                txValue = txResp.value ?: "0",
                 txId = "",
                 txTo = txResp.to ?: "",
                 txExtraId = null,
@@ -204,56 +259,168 @@ internal class RaksaSwapRepository @Inject constructor(
         ).right()
     }
 
-    private suspend fun buildKyberSwapTx(
+        private suspend fun buildKyberSwapTx(
         fromAddr: String, toAddr: String, amount: String,
-        fromDec: Int, toDec: Int, network: String,
+        fromDec: Int, toDec: Int, fromChain: String,
         userAddress: String, toAddress: String,
     ): Either<ExpressDataError, SwapDataModel> {
-        // For now, return empty calldata — KyberSwap tx building not yet implemented
-        val amountOut = rawToAmount("0", toDec)
-        return SwapDataModel(
-            toTokenAmount = SwapAmount(amountOut, toDec),
-            transaction = com.tangem.feature.swap.domain.models.domain.ExpressTransactionModel.DEX(
-                fromAmount = SwapAmount(amount.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO, fromDec),
-                toAmount = SwapAmount(amountOut, toDec),
-                txValue = null,
-                txId = "",
-                txTo = "",
-                txExtraId = null,
-                txFrom = userAddress,
-                txData = "",
-                otherNativeFeeWei = null,
-                gas = null,
-                allowanceContract = null,
-            ),
-        ).right()
+        // KyberSwap tx building not yet implemented - return error
+        android.util.Log.w("RaksaSwap", "KyberSwap tx building not implemented")
+        return ExpressDataError.UnknownError().left()
     }
 
-    private fun buildThorchainTx(
+    /**
+     * Build THORChain swap transaction.
+     * THORChain works by sending native coins to a vault/router with a memo.
+     * Memo format: =:DEST_ASSET:DEST_ADDRESS:
+     *
+     * For cross-chain: send to THORChain vault on source chain
+     * For same-chain: send to THORChain router on same chain
+     */
+    private suspend fun buildThorchainTx(
         fromAddr: String, fromChain: String, toAddr: String, toChain: String,
         amount: String, fromDec: Int, toDec: Int,
         userAddress: String, toAddress: String,
     ): Either<ExpressDataError, SwapDataModel> {
-        // THORChain swap requires sending native + memo to pool address
-        // This is a placeholder — real implementation needs THORChain memo generation
-        android.util.Log.w("RaksaSwap", "THORChain tx building: not fully implemented yet")
-        val amountOut = rawToAmount("0", toDec)
-        return SwapDataModel(
-            toTokenAmount = SwapAmount(amountOut, toDec),
-            transaction = com.tangem.feature.swap.domain.models.domain.ExpressTransactionModel.DEX(
-                fromAmount = SwapAmount(amount.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO, fromDec),
-                toAmount = SwapAmount(amountOut, toDec),
-                txValue = if (fromChain.lowercase().contains("bitcoin")) amount else null,
-                txId = "",
-                txTo = "thor1... (pool address needed)",
-                txExtraId = null,
-                txFrom = userAddress,
-                txData = "",
-                otherNativeFeeWei = null,
-                gas = null,
-                allowanceContract = null,
-            ),
-        ).right()
+        try {
+            // Resolve THORChain assets
+            val fromAsset = thorchainAssetByAddress(fromChain, fromAddr) ?: thorchainAsset(fromChain, when {
+                fromChain.lowercase().contains("bitcoin") -> "BTC"
+                fromChain.lowercase().contains("litecoin") -> "LTC"
+                else -> "ETH"
+            })
+            val toAsset = thorchainAssetByAddress(toChain, toAddr) ?: thorchainAsset(toChain, when {
+                toChain.lowercase().contains("bitcoin") -> "BTC"
+                toChain.lowercase().contains("ethereum") -> "ETH"
+                else -> "ETH"
+            })
+
+            if (fromAsset == null || toAsset == null) {
+                return ExpressDataError.UnknownError().left()
+            }
+
+            // Build memo: =:DEST_ASSET:DEST_ADDRESS:
+            val memo = "=:${toAsset}:${toAddress}:"
+            android.util.Log.d("RaksaSwap", "THORChain memo: $memo (fromAsset=$fromAsset, toAsset=$toAsset)")
+
+            // Get THORChain inbound addresses to find the vault/router
+            val vaultAddress = getThorchainVaultAddress(fromChain)
+
+            // Get expected output from quote
+            val thorAmount = amount.toBigDecimal().movePointLeft(fromDec).movePointRight(8).toLong().toString()
+            val resp = thorchainApi.getQuote(thorAmount, fromAsset, toAsset)
+            val expectedOut = resp.expectedAmountOut?.toLongOrNull() ?: 0L
+            val amountOut = rawToAmount(expectedOut.toString(), fromDec)
+
+            android.util.Log.d("RaksaSwap", "THORChain tx: vault=$vaultAddress memo=$memo amountOut=$amountOut")
+
+            // For Bitcoin: txValue = amount (satoshis), txTo = vault address, txData = memo
+            // For Ethereum: txValue = amount (wei), txTo = router contract, txData = memo (in calldata)
+            val isBitcoin = fromChain.lowercase().contains("bitcoin") || fromChain.lowercase().contains("litecoin")
+            val txTo = vaultAddress
+            val txData = if (isBitcoin) "" else depositWithExpiryCalldata(vaultAddress, fromAddr, amount, memo)
+
+            return SwapDataModel(
+                toTokenAmount = SwapAmount(amountOut, toDec),
+                transaction = com.tangem.feature.swap.domain.models.domain.ExpressTransactionModel.DEX(
+                    fromAmount = SwapAmount(amount.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO, fromDec),
+                    toAmount = SwapAmount(amountOut, toDec),
+                    txValue = if (isBitcoin) amount else amount, // For ETH: send native ETH + memo
+                    txId = "",
+                    txTo = txTo,
+                    txExtraId = null,
+                    txFrom = userAddress,
+                    txData = txData, // Memo encoded as calldata for EVM, empty for BTC
+                    otherNativeFeeWei = null,
+                    gas = null,
+                    allowanceContract = null,
+                ),
+            ).right()
+        } catch (e: Exception) {
+            android.util.Log.e("RaksaSwap", "THORChain tx build error: ${e.message}")
+            return ExpressDataError.UnknownError().left()
+        }
+    }
+
+    /**
+     * Get THORChain vault address for the source chain.
+     * For BTC: THORChain vault (from inbound addresses API)
+     * For ETH: THORChain Router contract
+     */
+    // THORChain vault/router addresses (fetched from API 2025-07-19)
+    // WARNING: These change regularly! Always prefer fetching from API.
+    private val THORCHAIN_VAULTS = mapOf(
+        "BTC" to "bc1q2nfxrvvg67nhey0gk0cc8ke2ea4akge8kskyyq",
+        "LTC" to "ltc1q2nfxrvvg67nhey0gk0cc8ke2ea4akge8jvvqus",
+        "ETH" to "0xD37BbE5744D730a1d98d8DC97c42F0Ca46aD7146",
+        "AVAX" to "0x00dc6100103BC402d490aEE3F9a5560cBd91f1d4",
+        "MATIC" to "0xD37BbE5744D730a1d98d8DC97c42F0Ca46aD7146",
+    )
+
+    private val THORCHAIN_CHAIN_MAP = mapOf(
+        "BITCOIN" to "BTC", "LITECOIN" to "LTC", "ETHEREUM" to "ETH",
+        "ARBITRUM" to "ETH", "POLYGON" to "MATIC", "OPTIMISM" to "ETH",
+        "BASE" to "ETH", "AVALANCHE" to "AVAX",
+    )
+
+    /**
+     * Get THORChain vault/router address.
+     * Prefers live API, falls back to cached addresses.
+     * Doc says: "Never cache vault addresses, they churn regularly!"
+     */
+    private suspend fun getThorchainVaultAddress(chain: String): String {
+        val normalizedChain = chain.lowercase().replace("-one", "").replace("-pos", "").uppercase()
+        val tcChain = THORCHAIN_CHAIN_MAP[normalizedChain] ?: "ETH"
+
+        // Try live API first
+        try {
+            val conn = java.net.URL("https://gateway.liquify.com/chain/thorchain_api/thorchain/inbound_addresses")
+                .openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            if (conn.responseCode == 200) {
+                val body = conn.inputStream.bufferedReader().readText()
+                val addrs = org.json.JSONArray(body)
+                for (i in 0 until addrs.length()) {
+                    val entry = addrs.getJSONObject(i)
+                    if (entry.optString("chain") == tcChain && !entry.optBoolean("halted")) {
+                        // For EVM chains, use router if available; for UTXO, use vault
+                        val router = entry.optString("router", "")
+                        val vault = entry.optString("address", "")
+                        val result = if (router.isNotBlank()) router else vault
+                        android.util.Log.d("RaksaSwap", "THORChain vault (live): $tcChain -> $result")
+                        if (result.isNotBlank()) return result
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("RaksaSwap", "Failed to fetch THORChain vault from API: ${e.message}")
+        }
+
+        // Fallback to cached addresses
+        val fallback = THORCHAIN_VAULTS[tcChain] ?: "0xD37BbE5744D730a1d98d8DC97c42F0Ca46aD7146"
+        android.util.Log.d("RaksaSwap", "THORChain vault (fallback): $tcChain -> $fallback")
+        return fallback
+    }
+
+    /**
+     * Encode THORChain memo as EVM calldata for the Router contract.
+     * The Router contract accepts: function deposit(address asset, uint256 amount, bytes memo)
+     * Selector for deposit(address,uint256,bytes) = 0xb0431182
+     */
+    private fun depositWithExpiryCalldata(vault: String, asset: String, amount: String, memo: String): String {
+        val selector = "e517ced0"
+        val paddedVault = "000000000000000000000000" + vault.removePrefix("0x").lowercase()
+        val paddedAsset = "000000000000000000000000" + asset.removePrefix("0x").lowercase()
+        val paddedAmount = java.math.BigInteger(amount).toString(16).padStart(64, '0')
+        val memoOffset = "00000000000000000000000000000000000000000000000000000000000000a0"
+        val memoBytes = memo.toByteArray(Charsets.UTF_8)
+        val memoLen = memoBytes.size.toString(16).padStart(64, '0')
+        val memoHex = memoBytes.joinToString("") { "%02x".format(it) }
+        val paddedMemoHex = memoHex.padStart(((memoBytes.size + 31) / 32) * 64, '0')
+        val expiryTs = ((System.currentTimeMillis() / 1000) + 7200).toString(16).padStart(64, '0')
+        return "0x" + selector + paddedVault + paddedAsset + paddedAmount + memoOffset + memoLen + paddedMemoHex + expiryTs
     }
 
     private suspend fun buildAcrossTx(
@@ -281,7 +448,7 @@ internal class RaksaSwapRepository @Inject constructor(
         )
 
         val amountOut = rawToAmount(outputAmount.toString(), toDec)
-        val spokePool = feeData.limits?.let { "" } ?: ""
+        val spokePool = DexTokenList.ACROSS_SPOKE_POOLS[toChainId] ?: ""
 
         android.util.Log.d("RaksaSwap", "Across tx built: to=$spokePool dataLen=${calldata.length} outputAmount=$outputAmount")
 
@@ -290,9 +457,9 @@ internal class RaksaSwapRepository @Inject constructor(
             transaction = com.tangem.feature.swap.domain.models.domain.ExpressTransactionModel.DEX(
                 fromAmount = SwapAmount(amount.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO, fromDec),
                 toAmount = SwapAmount(amountOut, toDec),
-                txValue = null,
+                txValue = "0",
                 txId = "",
-                txTo = "", // SpokePool address from API
+                txTo = DexTokenList.ACROSS_SPOKE_POOLS[toChainId] ?: "",
                 txExtraId = null,
                 txFrom = userAddress,
                 txData = calldata,
@@ -587,4 +754,62 @@ override suspend fun getExchangeStatus(userWallet: UserWallet?, userWalletId: Us
             return ExpressDataError.UnknownError().left()
         }
     }
-}
+
+    private suspend fun buildOdosTx(
+        fromAddr: String, toAddr: String, amount: String,
+        fromDec: Int, toDec: Int, fromChain: String,
+        userAddress: String, toAddress: String,
+    ): Either<ExpressDataError, SwapDataModel> {
+        try {
+            val chainId = CHAIN_IDS[normalizeChainId(fromChain)] ?: 1
+
+            // Step 1: Get quote
+            val quoteResp = odosApi.getQuote(
+                com.tangem.datasource.api.swap.OdosQuoteRequest(
+                    chainId = chainId,
+                    inputTokens = listOf(com.tangem.datasource.api.swap.OdosTokenAmount(fromAddr, amount)),
+                    outputTokens = listOf(com.tangem.datasource.api.swap.OdosTokenProportion(toAddr, 1f)),
+                    slippageLimitPercent = 0.5f,
+                    userAddr = userAddress,
+                )
+            )
+            android.util.Log.d("RaksaSwap", "Odos quote: pathId= out=")
+
+            // Step 2: Assemble transaction
+            val assembleResp = odosApi.assembleTransaction(
+                com.tangem.datasource.api.swap.OdosAssembleRequest(
+                    userAddr = userAddress,
+                    pathId = quoteResp.pathId,
+                    simulate = false,
+                )
+            )
+            val tx = assembleResp.transaction ?: return ExpressDataError.UnknownError().left()
+            val outAmount = assembleResp.outAmounts?.firstOrNull() ?: "0"
+            val amountOut = rawToAmount(outAmount, toDec)
+
+            android.util.Log.d("RaksaSwap", "Odos tx: to= dataLen= gas=")
+
+            return SwapDataModel(
+                toTokenAmount = SwapAmount(amountOut, toDec),
+                transaction = com.tangem.feature.swap.domain.models.domain.ExpressTransactionModel.DEX(
+                    fromAmount = SwapAmount(amount.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO, fromDec),
+                    toAmount = SwapAmount(amountOut, toDec),
+                    txValue = tx.value,
+                    txId = "",
+                    txTo = tx.to,
+                    txExtraId = null,
+                    txFrom = userAddress,
+                    txData = tx.data,
+                    otherNativeFeeWei = null,
+                    gas = tx.gas.toBigInteger(),
+                    allowanceContract = null,
+                ),
+            ).right()
+        } catch (e: Exception) {
+            android.util.Log.e("RaksaSwap", "Odos tx build error: ")
+            return ExpressDataError.UnknownError().left()
+        }
+    }
+
+    }
+

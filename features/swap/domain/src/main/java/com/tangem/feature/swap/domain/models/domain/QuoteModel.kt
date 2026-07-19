@@ -14,4 +14,5 @@ data class QuoteModel(
     val toTokenAmount: SwapAmount,
     val allowanceContract: String?,
     val txType: ExpressTxType?,
+    val providerId: String? = null,
 )

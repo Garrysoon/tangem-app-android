@@ -39,6 +39,8 @@ sealed class ApiConfig {
         Across,
         Thorchain,
         LimitOrder,
+        Odos,
+        CoWSwap,
     }
 
     private fun initializeId(): ID {
@@ -61,6 +63,8 @@ sealed class ApiConfig {
             is Across -> ID.Across
             is Thorchain -> ID.Thorchain
             is LimitOrder -> ID.LimitOrder
+            is Odos -> ID.Odos
+            is CoWSwap -> ID.CoWSwap
         }
     }
 

@@ -42,7 +42,7 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
         imageLarge = "", termsOfUse = null, privacyPolicy = null,
         slippage = null, rateTypes = listOf(ExpressRateType.Float),
     )
-    private val dexProviders = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"))
+    private val dexProviders = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"), dexProvider("odos", "Odos"), dexProvider("cowswap", "CoW Swap"))
     private val thorchainProvider = ExpressProvider(
         providerId = "thorchain", name = "THORChain", type = ExpressProviderType.DEX,
         imageLarge = "", termsOfUse = null, privacyPolicy = null,

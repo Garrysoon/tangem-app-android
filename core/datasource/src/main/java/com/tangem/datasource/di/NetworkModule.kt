@@ -15,6 +15,8 @@ import com.tangem.datasource.api.raksa.RaksaApi
 import com.tangem.datasource.api.swap.AcrossBridgeApi
 import com.tangem.datasource.api.swap.KyberSwapApi
 import com.tangem.datasource.api.swap.LimitOrderApi
+import com.tangem.datasource.api.swap.OdosApi
+import com.tangem.datasource.api.swap.CoWSwapApi
 import com.tangem.datasource.api.swap.ThorchainApi
 import com.tangem.datasource.api.swap.ParaswapApi
 import com.tangem.datasource.api.markets.TangemTechMarketsApi
@@ -135,6 +137,34 @@ internal object NetworkModule {
                 callTimeoutSeconds = 60L,
                 connectTimeoutSeconds = 60L,
                 readTimeoutSeconds = 60L,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideCoWSwapApi(retrofitApiBuilder: RetrofitApiBuilder): com.tangem.datasource.api.swap.CoWSwapApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.CoWSwap,
+            applyTimeoutAnnotations = false,
+            timeouts = RetrofitApiBuilder.Timeouts(
+                callTimeoutSeconds = 30L,
+                connectTimeoutSeconds = 10L,
+                readTimeoutSeconds = 15L,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideOdosApi(retrofitApiBuilder: RetrofitApiBuilder): com.tangem.datasource.api.swap.OdosApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Odos,
+            applyTimeoutAnnotations = false,
+            timeouts = RetrofitApiBuilder.Timeouts(
+                callTimeoutSeconds = 30L,
+                connectTimeoutSeconds = 10L,
+                readTimeoutSeconds = 15L,
             ),
         )
     }
