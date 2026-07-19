@@ -62,31 +62,30 @@ internal class RaksaSwapRepositoryV2 @Inject constructor(
     ): List<SwapPairModel> = withContext(coroutineDispatcher.default) {
         val fromChain = chainOf(primarySwapCurrencyStatus.currency)
         val toChain = chainOf(secondarySwapCurrencyStatus.currency)
-        if (fromChain == toChain) {
-            // Same-chain: DEX providers (Paraswap, KyberSwap)
-            val p = dexProviders.filter { it.type in filterProviderTypes }
-            listOf(SwapPairModel(
-                from = primarySwapCurrencyStatus.status,
-                to = secondarySwapCurrencyStatus.status,
-                providers = p,
-            ))
+        android.util.Log.d("RaksaV2", "getPairs: fromChain=$fromChain toChain=$toChain fromRawId=${primarySwapCurrencyStatus.currency.network.rawId} toRawId=${secondarySwapCurrencyStatus.currency.network.rawId}")
+        val providers = if (fromChain == toChain) {
+            dexProviders.filter { it.type in filterProviderTypes }
         } else if (needsBridge(fromChain, toChain)) {
-            // Cross-chain EVM: Across bridge
-            listOf(SwapPairModel(
-                from = primarySwapCurrencyStatus.status,
-                to = secondarySwapCurrencyStatus.status,
-                providers = listOf(bridgeProvider),
-            ))
+            listOf(bridgeProvider)
         } else if (isUtxoBridge(fromChain, toChain)) {
-            // Cross-chain BTC/LTC: THORChain
-            listOf(SwapPairModel(
+            listOf(thorchainProvider)
+        } else {
+            return@withContext emptyList()
+        }
+
+        // Return pairs for BOTH directions so direction toggle works
+        listOf(
+            SwapPairModel(
                 from = primarySwapCurrencyStatus.status,
                 to = secondarySwapCurrencyStatus.status,
-                providers = listOf(thorchainProvider),
-            ))
-        } else {
-            emptyList()
-        }
+                providers = providers,
+            ),
+            SwapPairModel(
+                from = secondarySwapCurrencyStatus.status,
+                to = primarySwapCurrencyStatus.status,
+                providers = providers,
+            ),
+        )
     }
 
     override suspend fun getPairs(

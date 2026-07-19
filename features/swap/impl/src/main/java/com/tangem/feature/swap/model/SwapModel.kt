@@ -91,6 +91,10 @@ import com.tangem.feature.swap.domain.models.ui.*
 import com.tangem.feature.swap.domain.transfer.SwapTransferInteractor
 import com.tangem.feature.swap.models.SwapAlertUM
 import com.tangem.feature.swap.models.SwapStateHolder
+import com.tangem.feature.swap.models.LimitOrderItem
+import com.tangem.feature.swap.models.LimitOrderProtocol
+import com.tangem.feature.swap.models.LimitOrderState
+import com.tangem.feature.swap.models.SwapButton
 import com.tangem.feature.swap.models.TokenSelectionDirection
 import com.tangem.feature.swap.models.UiActions
 import com.tangem.feature.swap.models.states.SwapNotificationUM
@@ -124,6 +128,10 @@ import java.text.DecimalFormat
 import java.text.NumberFormat
 import java.util.Locale
 import javax.inject.Inject
+import com.tangem.domain.transaction.usecase.SignUseCase
+import com.tangem.feature.swap.data.LimitOrderEip712Builder
+import com.tangem.feature.swap.data.LimitOrderSigner
+import com.tangem.feature.swap.model.TokenPairSuggester
 
 typealias SuccessLoadedSwapData = Map<SwapProvider, SwapState.QuotesLoadedState>
 
@@ -168,6 +176,7 @@ internal class SwapModel @Inject constructor(
     private val getSwapUiModeUseCase: GetSwapUiModeUseCase,
     private val setSwapUiModeUseCase: SetSwapUiModeUseCase,
     private val calculateAmountUseCase: CalculateAmountUseCase,
+    private val signUseCase: SignUseCase,
 ) : Model() {
 
     private val params = paramsContainer.require<SwapComponent.Params>()
@@ -245,7 +254,9 @@ internal class SwapModel @Inject constructor(
     private val swapPairsJobHolder = JobHolder()
 
     private var isAmountChangedByUser: Boolean = false
+    private var userSlippagePercent: Float = 1.0f
     private var lastPermissionNotificationTokens: Pair<String, String>? = null
+    private var allAvailableSwapTokens: List<com.tangem.domain.swap.models.SwapCurrencyStatus> = emptyList()
 
     private var preselectedFromCurrency: CryptoCurrency? = null
     private var preselectedToCurrency: CryptoCurrency? = null
@@ -446,6 +457,17 @@ internal class SwapModel @Inject constructor(
             )
         }
 
+        // Auto-suggest TO when FROM is selected and TO is null
+        val finalToStatus = if (isFromDirection && toSwapCurrencyStatus == null && fromSwapCurrencyStatus != null) {
+            TokenPairSuggester.suggest(
+                fromToken = fromSwapCurrencyStatus,
+                availableTokens = allAvailableSwapTokens,
+                alreadySelectedTo = null,
+            )
+        } else {
+            toSwapCurrencyStatus
+        }
+
         if (dataState.fromSwapCurrencyStatus != null) {
             isAmountChangedByUser = true
         }
@@ -469,12 +491,12 @@ internal class SwapModel @Inject constructor(
             lastReducedBalanceBy.value = BigDecimal.ZERO
             SwapProcessDataState(
                 fromSwapCurrencyStatus = fromSwapCurrencyStatus,
-                toSwapCurrencyStatus = toSwapCurrencyStatus,
+                toSwapCurrencyStatus = finalToStatus,
             )
         } else {
             dataState.copy(
                 fromSwapCurrencyStatus = fromSwapCurrencyStatus,
-                toSwapCurrencyStatus = toSwapCurrencyStatus,
+                toSwapCurrencyStatus = finalToStatus,
             )
         }
         filterTokensFromSelector()
@@ -539,8 +561,12 @@ internal class SwapModel @Inject constructor(
             val newToSwapCurrencyStatus = dataState.fromSwapCurrencyStatus
 
             isAmountChangedByUser = true
-
-            lastAmount.value = INITIAL_AMOUNT
+            // Preserve the calculated "you receive" amount as the new "you send" amount
+            val currentState = dataState
+            val currentLoadedState = currentState.lastLoadedSwapStates[currentState.selectedProvider]
+                as? com.tangem.feature.swap.domain.models.ui.SwapState.QuotesLoadedState
+            val receiveAmount = currentLoadedState?.toTokenInfo?.tokenAmount?.value?.toPlainString()
+            lastAmount.value = receiveAmount ?: INITIAL_AMOUNT
             lastReducedBalanceBy.value = BigDecimal.ZERO
 
             dataState = SwapProcessDataState(
@@ -1030,6 +1056,146 @@ internal class SwapModel @Inject constructor(
             swapFee = getSelectedSwapFee(),
             feeError = feeSelectorRepository.state.value as? FeeSelectorUM.Error,
         )
+
+        // Show notification for two-step swap (swap + bridge)
+        val fromToken = dataState.fromSwapCurrencyStatus?.currency
+        val toToken = dataState.toSwapCurrencyStatus?.currency
+        try {
+        val isCrossTokenCrossChain = fromToken != null && toToken != null && fromToken.network.rawId != toToken.network.rawId && fromToken.getContractAddress() != toToken.getContractAddress() && provider.providerId == "across"
+        if (isCrossTokenCrossChain) {
+            val fromSym = fromToken.symbol
+            val toSym = toToken.symbol
+            val srcChain = fromToken.network.name
+            val dstChain = toToken.network.name
+            val twoStepNotification = com.tangem.common.ui.notifications.NotificationUM.Info(
+                title = stringReference("Two-step swap"),
+                subtitle = stringReference("$fromSym → $toSym on $srcChain (DEX), then $toSym bridge $srcChain → $dstChain"),
+            )
+            val currentNotifications = uiState.notifications.toMutableList()
+            currentNotifications.add(twoStepNotification)
+            uiState = uiState.copy(notifications = kotlinx.collections.immutable.persistentListOf(*currentNotifications.toTypedArray()))
+        }
+
+        // Build transaction preview for cross-token cross-chain swaps
+        val previewList = mutableListOf<com.tangem.feature.swap.models.SwapTxPreview>()
+        if (isCrossTokenCrossChain && provider.providerId == "across" && fromToken != null && toToken != null) {
+            val fromSym = fromToken.symbol
+            val toSym = toToken.symbol
+            val srcChain = fromToken.network.name
+            val dstChain = toToken.network.name
+            val sameSym = findSameTokenSymbol(toToken)
+            val amountStr = dataState.amount ?: lastAmount.value
+            previewList.add(
+                com.tangem.feature.swap.models.SwapTxPreview(
+                    step = 1,
+                    title = "ERC-20 Approve",
+                    description = "Allow DEX to spend your $fromSym on $srcChain",
+                    fromAmount = "",
+                    toAmount = "",
+                    contractAddress = null,
+                    contractName = "ERC-20 approve",
+                    estimatedGasUsd = "\$2-5",
+                )
+            )
+            previewList.add(
+                com.tangem.feature.swap.models.SwapTxPreview(
+                    step = 2,
+                    title = "DEX Swap on $srcChain",
+                    description = "Swap $fromSym -> $sameSym via Paraswap on $srcChain",
+                    fromAmount = "$amountStr $fromSym",
+                    toAmount = "$sameSym (amount from Paraswap)",
+                    contractAddress = "0xDEF171Fe48CF0115B1d80b88dc8eAB59176FEeE5",
+                    contractName = "Paraswap Augustus Router",
+                    estimatedGasUsd = "\$5-15",
+                )
+            )
+            previewList.add(
+                com.tangem.feature.swap.models.SwapTxPreview(
+                    step = 3,
+                    title = "Bridge $srcChain -> $dstChain",
+                    description = "Bridge $sameSym from $srcChain to $dstChain via Across Protocol",
+                    fromAmount = "$sameSym ($srcChain)",
+                    toAmount = "$sameSym ($dstChain)",
+                    contractAddress = "0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5",
+                    contractName = "Across SpokePool",
+                    estimatedGasUsd = "\$2-5",
+                )
+            )
+        }
+        // Gas estimation for the swap - only count relevant transactions
+        if (fromToken != null && toToken != null) {
+            try {
+                val isApprovalNeeded = fromToken.getContractAddress() != "0" && fromToken.getContractAddress() != "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+                val isCrossChain = fromToken.network.rawId != toToken.network.rawId
+                val gasSteps = mutableListOf<com.tangem.feature.swap.data.GasEstimate>()
+                if (isApprovalNeeded) gasSteps.add(com.tangem.feature.swap.data.GasEstimator.estimate("approve", fromToken.network.rawId))
+                when {
+                    provider.providerId == "thorchain" -> gasSteps.add(com.tangem.feature.swap.data.GasEstimator.estimate("thorchain_swap", fromToken.network.rawId))
+                    isCrossChain -> {
+                        gasSteps.add(com.tangem.feature.swap.data.GasEstimator.estimate("swap_paraswap", fromToken.network.rawId))
+                        gasSteps.add(com.tangem.feature.swap.data.GasEstimator.estimate("bridge_across", fromToken.network.rawId))
+                    }
+                    else -> gasSteps.add(com.tangem.feature.swap.data.GasEstimator.estimate("swap_paraswap", fromToken.network.rawId))
+                }
+                val totalGasUsd = com.tangem.feature.swap.data.GasEstimator.totalUsd(gasSteps)
+                uiState = uiState.copy(totalGasEstimateUsd = com.tangem.feature.swap.data.GasEstimator.formatUsd(totalGasUsd))
+            } catch (e: Exception) {
+                android.util.Log.e("SwapModel", "Gas estimation error: ${e.message}")
+            }
+        }
+
+        if (previewList.isNotEmpty()) {
+            uiState = uiState.copy(txPreview = previewList)
+        }
+
+        // Balance validation
+        if (fromToken != null) {
+            try {
+                val fromStatus = dataState.fromSwapCurrencyStatus
+                if (fromStatus != null) {
+                    val balanceAmount = fromStatus.status.value.amount ?: java.math.BigDecimal.ZERO
+                    val swapAmount = dataState.amount?.toBigDecimalOrNull() ?: lastAmount.value.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
+                    val validation = com.tangem.feature.swap.data.BalanceValidator.validate(
+                        fromBalance = balanceAmount,
+                        fromChain = fromToken.network.rawId,
+                        swapAmount = swapAmount.movePointRight(fromToken.decimals),
+                    )
+                    uiState = uiState.copy(balanceWarning = validation.gasReserveWarning)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SwapModel", "Balance validation error: ${e.message}")
+            }
+        }
+
+        } catch (e: Exception) {
+            android.util.Log.e("SwapModel", "Safety features error: ${e.message}")
+        }
+
+        if (uiState.swapUIMode == SwapUIMode.Limit) {
+            uiState = uiState.copy(
+                swapButton = uiState.swapButton.copy(
+                    mode = SwapButton.Mode.LIMIT_ORDER,
+                    onClick = { onLimitOrderCreate() },
+                ),
+                limitOrderState = uiState.limitOrderState?.copy(
+                    fromTokenSymbol = dataState.fromSwapCurrencyStatus?.currency?.symbol.orEmpty(),
+                    toTokenSymbol = dataState.toSwapCurrencyStatus?.currency?.symbol.orEmpty(),
+                    activeOrders = limitOrders.toList(),
+                ),
+                slippagePercent = userSlippagePercent,
+                onSlippageChanged = ::onSlippageChanged,
+            )
+        }
+    }
+
+    private fun findSameTokenSymbol(currency: com.tangem.domain.models.currency.CryptoCurrency): String {
+        val addr = currency.getContractAddress().lowercase()
+        return when {
+            addr.startsWith("0xa0b8") || addr.startsWith("0xaf88") || addr.startsWith("0x2791") -> "USDC"
+            addr.startsWith("0xdac1") || addr.startsWith("0xfd08") || addr.startsWith("0xc213") -> "USDT"
+            addr == "0" && currency.symbol == "ETH" -> "ETH"
+            else -> currency.symbol
+        }
     }
 
     private fun sendAnalyticsForNotifications(
@@ -1792,8 +1958,195 @@ internal class SwapModel @Inject constructor(
         analyticsEventHandler.send(
             SwapEvents.SwapTypeReSelection(typeFrom = currentMode, typeTo = mode),
         )
-        uiState = uiState.copy(swapUIMode = mode)
+        val newLimitState = if (mode == SwapUIMode.Limit) {
+            LimitOrderState(
+                targetPrice = "",
+                expiryHours = 24,
+                onTargetPriceChanged = ::onLimitTargetPriceChanged,
+                onExpiryChanged = ::onLimitExpiryChanged,
+                onProtocolChanged = ::onLimitProtocolChanged,
+                fromTokenSymbol = dataState.fromSwapCurrencyStatus?.currency?.symbol.orEmpty(),
+                toTokenSymbol = dataState.toSwapCurrencyStatus?.currency?.symbol.orEmpty(),
+                activeOrders = limitOrders.toList(),
+                onCancelOrder = ::onLimitOrderCancel,
+                onCreateOrder = ::onLimitOrderCreate,
+            )
+        } else {
+            null
+        }
+        uiState = uiState.copy(swapUIMode = mode, limitOrderState = newLimitState)
         modelScope.launch { setSwapUiModeUseCase(mode) }
+    }
+
+    private fun onLimitTargetPriceChanged(price: String) {
+        uiState = uiState.copy(
+            limitOrderState = uiState.limitOrderState?.copy(targetPrice = price),
+        )
+    }
+
+    private fun onLimitExpiryChanged(hours: Int) {
+        uiState = uiState.copy(
+            limitOrderState = uiState.limitOrderState?.copy(expiryHours = hours),
+        )
+    }
+
+    private fun onSlippageChanged(percent: Float) {
+        userSlippagePercent = percent
+        uiState = uiState.copy(slippagePercent = percent)
+    }
+
+    private fun onLimitProtocolChanged(protocol: LimitOrderProtocol) {
+        uiState = uiState.copy(
+            limitOrderState = uiState.limitOrderState?.copy(selectedProtocol = protocol),
+        )
+    }
+
+    private val limitOrders = mutableListOf<LimitOrderItem>()
+
+    private fun onLimitOrderCreate() {
+        val state = uiState.limitOrderState ?: return
+        val targetPrice = state.targetPrice.toDoubleOrNull() ?: return
+        val fromSymbol = state.fromTokenSymbol
+        val toSymbol = state.toTokenSymbol
+        if (fromSymbol.isEmpty() || toSymbol.isEmpty()) return
+
+        val expiryLabel = when (state.expiryHours) {
+            1 -> "1 hour"
+            4 -> "4 hours"
+            24 -> "1 day"
+            168 -> "7 days"
+            720 -> "30 days"
+            -1 -> "Until cancelled"
+            else -> "${state.expiryHours}h"
+        }
+
+        val amount = lastAmount.value
+
+        uiState = uiState.copy(
+            limitOrderState = uiState.limitOrderState?.copy(isCreating = true, statusMessage = "Building order..."),
+        )
+
+        modelScope.launch(dispatchers.main) {
+            try {
+                val fromStatus = dataState.fromSwapCurrencyStatus
+                val toStatus = dataState.toSwapCurrencyStatus
+                if (fromStatus == null || toStatus == null) {
+                    updateLimitOrderStatus("Error: select from and to tokens")
+                    return@launch
+                }
+
+                val userWallet = fromStatus.userWallet
+                val network = fromStatus.currency.network
+                val fromAddress = fromStatus.status.value.networkAddress?.defaultAddress?.value.orEmpty()
+
+                if (fromAddress.isEmpty()) {
+                    updateLimitOrderStatus("Error: wallet address not found")
+                    return@launch
+                }
+
+                val makerToken = fromStatus.currency.getContractAddress()
+                val takerToken = toStatus.currency.getContractAddress()
+
+                val fromDecimals = fromStatus.currency.decimals
+                val toDecimals = toStatus.currency.decimals
+                val amountBd = java.math.BigDecimal(amount)
+                val fromAmountRaw = amountBd.movePointRight(fromDecimals).toBigInteger()
+                val takerAmountRaw = amountBd.multiply(
+                    java.math.BigDecimal(targetPrice),
+                ).movePointRight(toDecimals).toBigInteger()
+
+                val expiryTimestamp = when (state.expiryHours) {
+                    -1 -> java.math.BigInteger("18446744073709551615") // max uint64
+                    else -> java.math.BigInteger.valueOf(
+                        (System.currentTimeMillis() / 1000) + (state.expiryHours.toLong() * 3600),
+                    )
+                }
+
+                val typedDataJson = when (state.selectedProtocol) {
+                    LimitOrderProtocol.ONEINCH_LOP_V4 -> {
+                        LimitOrderEip712Builder.build1inchLopV4(
+                            makerToken = makerToken,
+                            takerToken = takerToken,
+                            makerAmount = fromAmountRaw,
+                            takerAmount = takerAmountRaw,
+                            maker = fromAddress,
+                            chainId = 1,
+                            expiry = expiryTimestamp.toLong(),
+                        )
+                    }
+                    LimitOrderProtocol.PARASWAP_DELTA -> {
+                        LimitOrderEip712Builder.buildParaSwapDelta(
+                            makerAsset = makerToken,
+                            takerAsset = takerToken,
+                            makerAmount = fromAmountRaw,
+                            takerAmount = takerAmountRaw,
+                            maker = fromAddress,
+                            chainId = 1,
+                            expiry = expiryTimestamp.toLong(),
+                        )
+                    }
+                    LimitOrderProtocol.COW_PROTOCOL -> {
+                        updateLimitOrderStatus("Error: CoW Protocol not yet implemented")
+                        return@launch
+                    }
+                }
+
+                updateLimitOrderStatus("Tap your SecurityOS card to sign...")
+
+                val hash = com.tangem.blockchain.blockchains.ethereum.EthereumUtils.makeTypedDataHash(typedDataJson)
+                val signResult = signUseCase(hash = hash, userWallet = userWallet, network = network)
+
+                val sig = signResult.getOrElse {
+                    updateLimitOrderStatus("Error: signing failed - ${it.message ?: "unknown"}")
+                    return@launch
+                }
+
+                val sigHex = "0x" + sig.joinToString("") { "%02x".format(it) }
+
+                val order = LimitOrderItem(
+                    id = System.currentTimeMillis().toString(),
+                    fromSymbol = fromSymbol,
+                    toSymbol = toSymbol,
+                    targetPrice = state.targetPrice,
+                    amount = amount,
+                    expiryLabel = expiryLabel,
+                    createdAt = System.currentTimeMillis(),
+                    protocol = state.selectedProtocol,
+                    signatureHex = sigHex,
+                    status = "Signed",
+                )
+
+                limitOrders.add(order)
+                uiState = uiState.copy(
+                    limitOrderState = uiState.limitOrderState?.copy(
+                        activeOrders = limitOrders.toList(),
+                        targetPrice = "",
+                        isCreating = false,
+                        statusMessage = "Order signed! ${sigHex.take(22)}...",
+                    ),
+                )
+            } catch (e: Exception) {
+                updateLimitOrderStatus("Error: ${e.message ?: "unknown"}")
+            }
+        }
+    }
+
+    private fun updateLimitOrderStatus(message: String) {
+        uiState = uiState.copy(
+            limitOrderState = uiState.limitOrderState?.copy(
+                isCreating = false,
+                statusMessage = message,
+            ),
+        )
+    }
+
+    private fun onLimitOrderCancel(orderId: String) {
+        limitOrders.removeAll { it.id == orderId }
+        uiState = uiState.copy(
+            limitOrderState = uiState.limitOrderState?.copy(
+                activeOrders = limitOrders.toList(),
+            ),
+        )
     }
 
     private fun onSwapTypeMenuOpened() {

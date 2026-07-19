@@ -37,6 +37,25 @@ internal data class SwapStateHolder(
 
     val transferFooter: TextReference? = null,
 
+    val limitOrderState: LimitOrderState? = null,
+
+    // Slippage tolerance: 0.5%, 1.0%, 2.0% (as decimal: 0.005, 0.01, 0.02)
+    val slippagePercent: Float = 1.0f,
+    val onSlippageChanged: (Float) -> Unit = {},
+    val slippageOptions: List<Float> = listOf(0.5f, 1.0f, 2.0f),
+    // Transaction preview for safety
+    val txPreview: List<SwapTxPreview> = emptyList(),
+
+    // Bridge monitoring
+    val bridgeFillPercent: Float = 0f,
+    val bridgeFillStatusText: String = "",
+    val isBridgeMonitoring: Boolean = false,
+    val onCancelBridge: (() -> Unit)? = null,
+
+    // Balance validation
+    val balanceWarning: String? = null,
+    val totalGasEstimateUsd: String = "",
+
     val onRefresh: () -> Unit,
     val onBackClicked: () -> Unit,
     val onChangeCardsClicked: () -> Unit,
@@ -86,10 +105,12 @@ data class SwapButton(
         SWAP,
         TRANSFER,
         TRANSFER_PROGRESSING,
+        LIMIT_ORDER,
+        LIMIT_ORDER_PROGRESSING,
     }
 
     val isInProgress
-        get() = mode == Mode.SWAP_PROGRESSING || mode == Mode.TRANSFER_PROGRESSING
+        get() = mode == Mode.SWAP_PROGRESSING || mode == Mode.TRANSFER_PROGRESSING || mode == Mode.LIMIT_ORDER_PROGRESSING
 }
 
 @Immutable
@@ -144,3 +165,38 @@ sealed class SwapPermissionUM {
 
     object Empty : SwapPermissionUM()
 }
+
+enum class LimitOrderProtocol(val displayName: String, val key: String) {
+    ONEINCH_LOP_V4("1inch LOP V4", "1inch"),
+    PARASWAP_DELTA("ParaSwap Delta", "paraswap"),
+    COW_PROTOCOL("CoW Protocol", "cow"),
+}
+
+data class LimitOrderState(
+    val targetPrice: String = "",
+    val expiryHours: Int = 24,
+    val onTargetPriceChanged: (String) -> Unit = {},
+    val onExpiryChanged: (Int) -> Unit = {},
+    val fromTokenSymbol: String = "",
+    val toTokenSymbol: String = "",
+    val activeOrders: List<LimitOrderItem> = emptyList(),
+    val onCancelOrder: (String) -> Unit = {},
+    val onCreateOrder: () -> Unit = {},
+    val isCreating: Boolean = false,
+    val selectedProtocol: LimitOrderProtocol = LimitOrderProtocol.ONEINCH_LOP_V4,
+    val onProtocolChanged: (LimitOrderProtocol) -> Unit = {},
+    val statusMessage: String? = null,
+)
+
+data class LimitOrderItem(
+    val id: String,
+    val fromSymbol: String,
+    val toSymbol: String,
+    val targetPrice: String,
+    val amount: String,
+    val expiryLabel: String,
+    val createdAt: Long,
+    val protocol: LimitOrderProtocol,
+    val signatureHex: String? = null,
+    val status: String = "Pending",
+)

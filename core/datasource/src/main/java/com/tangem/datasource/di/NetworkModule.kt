@@ -14,6 +14,7 @@ import com.tangem.datasource.api.express.TangemExpressApi
 import com.tangem.datasource.api.raksa.RaksaApi
 import com.tangem.datasource.api.swap.AcrossBridgeApi
 import com.tangem.datasource.api.swap.KyberSwapApi
+import com.tangem.datasource.api.swap.LimitOrderApi
 import com.tangem.datasource.api.swap.ThorchainApi
 import com.tangem.datasource.api.swap.ParaswapApi
 import com.tangem.datasource.api.markets.TangemTechMarketsApi
@@ -120,6 +121,20 @@ internal object NetworkModule {
                 callTimeoutSeconds = 30L,
                 connectTimeoutSeconds = 30L,
                 readTimeoutSeconds = 30L,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideLimitOrderApi(retrofitApiBuilder: RetrofitApiBuilder): LimitOrderApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.LimitOrder,
+            applyTimeoutAnnotations = false,
+            timeouts = Timeouts(
+                callTimeoutSeconds = 60L,
+                connectTimeoutSeconds = 60L,
+                readTimeoutSeconds = 60L,
             ),
         )
     }

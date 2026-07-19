@@ -8,15 +8,22 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -25,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
@@ -84,6 +92,102 @@ internal fun SwapScreenContent(
                 ProviderItemBlockSimple(state = state.providerState)
             } else {
                 ProviderItemBlock(state = state.providerState)
+            }
+
+            // Slippage selector (shown for all swap modes)
+            if (state.changeCardsButtonState == ChangeCardsButtonState.ENABLED) {
+                SlippageSelector(
+                    selectedPercent = state.slippagePercent,
+                    options = state.slippageOptions,
+                    onSelected = state.onSlippageChanged,
+                )
+            }
+
+            if (state.swapUIMode == SwapUIMode.Limit) {
+                LimitOrderPriceBlock(
+                    targetPrice = state.limitOrderState?.targetPrice.orEmpty(),
+                    onTargetPriceChanged = state.limitOrderState?.onTargetPriceChanged ?: {},
+                    expiryHours = state.limitOrderState?.expiryHours ?: 24,
+                    onExpiryChanged = state.limitOrderState?.onExpiryChanged ?: {},
+                    fromTokenSymbol = state.limitOrderState?.fromTokenSymbol.orEmpty(),
+                    toTokenSymbol = state.limitOrderState?.toTokenSymbol.orEmpty(),
+                    selectedProtocol = state.limitOrderState?.selectedProtocol
+                        ?: LimitOrderProtocol.ONEINCH_LOP_V4,
+                    onProtocolChanged = state.limitOrderState?.onProtocolChanged ?: {},
+                    isCreating = state.limitOrderState?.isCreating ?: false,
+                    statusMessage = state.limitOrderState?.statusMessage,
+                )
+            }
+
+            if (state.swapUIMode == SwapUIMode.Limit && state.limitOrderState?.activeOrders.orEmpty().isNotEmpty()) {
+                ActiveLimitOrdersBlock(
+                    orders = state.limitOrderState?.activeOrders.orEmpty(),
+                    onCancelOrder = state.limitOrderState?.onCancelOrder ?: {},
+                )
+            }
+
+            // Balance warning
+            if (!state.balanceWarning.isNullOrEmpty()) {
+                Text(
+                    text = state.balanceWarning!!,
+                    style = TangemTheme.typography.caption1,
+                    color = TangemTheme.colors.text.accent,
+                    modifier = Modifier.padding(horizontal = TangemTheme.dimens.spacing12),
+                )
+            }
+
+            // Bridge monitoring progress
+            if (state.isBridgeMonitoring) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = TangemTheme.dimens.spacing12),
+                    verticalArrangement = Arrangement.spacedBy(TangemTheme.dimens.spacing4),
+                ) {
+                    Text(
+                        text = "Bridge Status",
+                        style = TangemTheme.typography.subtitle2,
+                        color = TangemTheme.colors.text.primary1,
+                    )
+                    if (state.bridgeFillPercent > 0f) {
+                        LinearProgressIndicator(
+                            progress = { state.bridgeFillPercent },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp),
+                        )
+                    }
+                    Text(
+                        text = state.bridgeFillStatusText,
+                        style = TangemTheme.typography.caption1,
+                        color = TangemTheme.colors.text.secondary,
+                    )
+                    if (state.onCancelBridge != null) {
+                        PrimaryButton(
+                            text = "Cancel Bridge",
+                            enabled = true,
+                            onClick = state.onCancelBridge!!,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+
+            // Gas estimate summary
+            if (state.totalGasEstimateUsd.isNotEmpty()) {
+                Text(
+                    text = "Est. gas: ${state.totalGasEstimateUsd}",
+                    style = TangemTheme.typography.caption2,
+                    color = TangemTheme.colors.text.tertiary,
+                    modifier = Modifier.padding(horizontal = TangemTheme.dimens.spacing12),
+                )
+            }
+
+            // Transaction preview (for cross-token cross-chain swaps)
+            if (state.txPreview.isNotEmpty()) {
+                TransactionPreviewBlock(
+                    transactions = state.txPreview,
+                )
             }
 
             feeBlock?.invoke(Modifier.fillMaxWidth())
@@ -407,6 +511,108 @@ private fun getButtonTitle(mode: SwapButton.Mode): String {
         SwapButton.Mode.TRANSFER_PROGRESSING -> stringResourceSafe(
             id = R.string.swapping_transfer_action_in_progress,
         )
+        SwapButton.Mode.LIMIT_ORDER -> "Place Limit Order"
+        SwapButton.Mode.LIMIT_ORDER_PROGRESSING -> "Placing Limit Order..."
+    }
+}
+
+@Composable
+private fun ActiveLimitOrdersBlock(
+    orders: List<LimitOrderItem>,
+    onCancelOrder: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = TangemTheme.dimens.spacing12),
+        verticalArrangement = Arrangement.spacedBy(TangemTheme.dimens.spacing8),
+    ) {
+        Text(
+            text = "Active Orders (${orders.size})",
+            style = TangemTheme.typography.subtitle1,
+            color = TangemTheme.colors.text.primary1,
+        )
+        orders.forEach { order ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = TangemTheme.colors.background.secondary,
+                        shape = TangemTheme.shapes.roundedCornersSmall,
+                    )
+                    .padding(TangemTheme.dimens.spacing12),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${order.fromSymbol} → ${order.toSymbol}",
+                        style = TangemTheme.typography.subtitle2,
+                        color = TangemTheme.colors.text.primary1,
+                    )
+                    Spacer(modifier = Modifier.height(TangemTheme.dimens.spacing4))
+                    Text(
+                        text = "Price: ${order.targetPrice} ${order.toSymbol}",
+                        style = TangemTheme.typography.caption1,
+                        color = TangemTheme.colors.text.secondary,
+                    )
+                    Text(
+                        text = "Amount: ${order.amount} ${order.fromSymbol}",
+                        style = TangemTheme.typography.caption1,
+                        color = TangemTheme.colors.text.secondary,
+                    )
+                    Text(
+                        text = "Expires: ${order.expiryLabel}",
+                        style = TangemTheme.typography.caption1,
+                        color = TangemTheme.colors.text.tertiary,
+                    )
+                }
+                PrimaryButton(
+                    modifier = Modifier.padding(start = TangemTheme.dimens.spacing8),
+                    text = "Cancel",
+                    enabled = true,
+                    onClick = { onCancelOrder(order.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlippageSelector(
+    selectedPercent: Float,
+    options: List<Float>,
+    onSelected: (Float) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = TangemTheme.dimens.spacing12),
+        horizontalArrangement = Arrangement.spacedBy(TangemTheme.dimens.spacing8),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Slippage:",
+            style = TangemTheme.typography.caption1,
+            color = TangemTheme.colors.text.secondary,
+        )
+        options.forEach { pct ->
+            val isSelected = pct == selectedPercent
+            val bg = if (isSelected) TangemTheme.colors.background.tertiary else TangemTheme.colors.background.secondary
+            val textColor = if (isSelected) TangemTheme.colors.text.primary1 else TangemTheme.colors.text.secondary
+            Box(
+                modifier = Modifier
+                    .background(bg, shape = TangemTheme.shapes.roundedCornersSmall)
+                    .clickable { onSelected(pct) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = "${pct}%",
+                    style = TangemTheme.typography.caption1,
+                    color = textColor,
+                )
+            }
+        }
     }
 }
 
@@ -447,6 +653,149 @@ private val state = SwapStateHolder(
     ),
     changeCardsButtonState = ChangeCardsButtonState.ENABLED,
 )
+
+@Composable
+private fun LimitOrderPriceBlock(
+    targetPrice: String,
+    onTargetPriceChanged: (String) -> Unit,
+    expiryHours: Int,
+    onExpiryChanged: (Int) -> Unit,
+    fromTokenSymbol: String,
+    toTokenSymbol: String,
+    selectedProtocol: LimitOrderProtocol,
+    onProtocolChanged: (LimitOrderProtocol) -> Unit,
+    isCreating: Boolean,
+    statusMessage: String?,
+) {
+    var showExpiryDropdown by remember { mutableStateOf(false) }
+    var showProtocolDropdown by remember { mutableStateOf(false) }
+
+    val expiryOptions = listOf(
+        1 to "1 hour",
+        4 to "4 hours",
+        24 to "1 day",
+        168 to "7 days",
+        720 to "30 days",
+        -1 to "Until cancelled",
+    )
+
+    val currentExpiryLabel = expiryOptions.find { it.first == expiryHours }?.second ?: "${expiryHours}h"
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = TangemTheme.dimens.spacing12),
+        verticalArrangement = Arrangement.spacedBy(TangemTheme.dimens.spacing12),
+    ) {
+        Text(
+            text = "Limit Order",
+            style = TangemTheme.typography.subtitle1,
+            color = TangemTheme.colors.text.primary1,
+        )
+
+        // Protocol selector
+        Box {
+            OutlinedTextField(
+                value = selectedProtocol.displayName,
+                onValueChange = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showProtocolDropdown = true },
+                readOnly = true,
+                enabled = false,
+                label = { Text("Protocol") },
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable { showProtocolDropdown = true },
+            )
+            DropdownMenu(
+                expanded = showProtocolDropdown,
+                onDismissRequest = { showProtocolDropdown = false },
+            ) {
+                LimitOrderProtocol.entries.forEach { protocol ->
+                    DropdownMenuItem(
+                        text = { Text(protocol.displayName) },
+                        onClick = {
+                            onProtocolChanged(protocol)
+                            showProtocolDropdown = false
+                        },
+                    )
+                }
+            }
+        }
+
+        // Target price input
+        OutlinedTextField(
+            value = targetPrice,
+            onValueChange = { new ->
+                if (new.isEmpty() || new.matches(Regex("^\\d*\\.?\\d*\$"))) {
+                    onTargetPriceChanged(new)
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = {
+                Text(
+                    text = if (fromTokenSymbol.isNotEmpty() && toTokenSymbol.isNotEmpty()) {
+                        "e.g. 1 $fromTokenSymbol = ??? $toTokenSymbol"
+                    } else {
+                        "e.g. 1800.00"
+                    },
+                )
+            },
+            label = { Text("Target price ($toTokenSymbol per 1 $fromTokenSymbol)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+        )
+
+        // Expiry selector
+        Box {
+            OutlinedTextField(
+                value = currentExpiryLabel,
+                onValueChange = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showExpiryDropdown = true },
+                readOnly = true,
+                enabled = false,
+                label = { Text("Expires in") },
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable { showExpiryDropdown = true },
+            )
+            DropdownMenu(
+                expanded = showExpiryDropdown,
+                onDismissRequest = { showExpiryDropdown = false },
+            ) {
+                expiryOptions.forEach { (hours, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            onExpiryChanged(hours)
+                            showExpiryDropdown = false
+                        },
+                    )
+                }
+            }
+        }
+
+        // Status message
+        if (statusMessage != null) {
+            Text(
+                text = statusMessage,
+                style = TangemTheme.typography.caption1,
+                color = if (statusMessage.startsWith("Error") || statusMessage.startsWith("Failed")) {
+                    TangemTheme.colors.text.accent
+                } else {
+                    TangemTheme.colors.text.accent
+                },
+            )
+        }
+    }
+}
 
 @Preview(widthDp = 360, showBackground = true)
 @Preview(widthDp = 360, showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)

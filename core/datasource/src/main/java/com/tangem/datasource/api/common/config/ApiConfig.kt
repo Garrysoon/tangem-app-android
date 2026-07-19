@@ -38,6 +38,7 @@ sealed class ApiConfig {
         KyberSwap,
         Across,
         Thorchain,
+        LimitOrder,
     }
 
     private fun initializeId(): ID {
@@ -59,6 +60,7 @@ sealed class ApiConfig {
             is KyberSwap -> ID.KyberSwap
             is Across -> ID.Across
             is Thorchain -> ID.Thorchain
+            is LimitOrder -> ID.LimitOrder
         }
     }
 

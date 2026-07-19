@@ -112,6 +112,7 @@ dependencies {
 
     /** Tangem libs */
     implementation(tangemDeps.blockchain)
+    implementation(tangemDeps.card.core)
 
     /** DI */
     implementation(deps.hilt.android)

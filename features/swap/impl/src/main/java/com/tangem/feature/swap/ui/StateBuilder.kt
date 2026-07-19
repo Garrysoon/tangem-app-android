@@ -110,7 +110,7 @@ internal class StateBuilder(
             swapUIMode = swapUIMode,
             onSwapUIModeChange = actions.onSwapUIModeChange,
             onSwapTypeMenuOpened = actions.onSwapTypeMenuOpened,
-            shouldShowAbMenu = swapFeatureToggles.isSwapAbEnabled,
+            shouldShowAbMenu = true,
         )
     }
 

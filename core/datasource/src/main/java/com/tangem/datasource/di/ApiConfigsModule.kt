@@ -143,4 +143,10 @@ internal object ApiConfigsModule {
     fun provideThorchainConfig(): ApiConfig {
         return Thorchain()
     }
+
+    @Provides
+    @IntoSet
+    fun provideLimitOrderConfig(): ApiConfig {
+        return LimitOrder()
+    }
 }

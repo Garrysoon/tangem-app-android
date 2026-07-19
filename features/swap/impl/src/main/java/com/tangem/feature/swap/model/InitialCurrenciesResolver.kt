@@ -13,6 +13,7 @@ import com.tangem.domain.tokens.model.ScenarioUnavailabilityReason
 import com.tangem.domain.wallets.usecase.GetUserWalletUseCase
 import com.tangem.features.swap.SwapComponent.Params.CurrencyPosition
 import com.tangem.utils.extensions.orZero
+import com.tangem.feature.swap.model.TokenPairSuggester
 import com.tangem.utils.isNullOrZero
 import javax.inject.Inject
 
@@ -86,10 +87,20 @@ internal class InitialCurrenciesResolver @Inject constructor(
                 )
             }
         } else {
-            selectCryptoCurrency(
+            val fromCurrency = selectCryptoCurrency(
                 cryptoPortfolioAccountsMap = cryptoPortfolioAccounts,
                 cryptoCurrencyList = cryptoCurrencyList,
-            ) to null
+            )
+            val suggestedTo = if (fromCurrency != null) {
+                TokenPairSuggester.suggest(
+                    fromToken = fromCurrency,
+                    availableTokens = cryptoCurrencyList,
+                    alreadySelectedTo = null,
+                )
+            } else {
+                null
+            }
+            fromCurrency to suggestedTo
         }
     }
 
@@ -222,5 +233,9 @@ internal class InitialCurrenciesResolver @Inject constructor(
                 .maxByOrNull { it.status.value.fiatAmount.orZero() }
                 ?: cryptoPortfolioAccountsMap.entries.firstOrNull()?.value?.firstOrNull()
         }
+    }
+
+    suspend fun getAvailableTokens(userWalletId: UserWalletId): List<com.tangem.domain.swap.models.SwapCurrencyStatus> {
+        return getWalletAccountCurrencyStatusList(userWalletId).values.flatten()
     }
 }

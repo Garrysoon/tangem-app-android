@@ -120,6 +120,14 @@ private fun SwapTopBar(stateHolder: SwapStateHolder) {
                                 stateHolder.onSwapUIModeChange(SwapUIMode.Detailed)
                             },
                         )
+                        SwapUiModeMenuItem(
+                            title = "Limit Order",
+                            isSelected = stateHolder.swapUIMode == SwapUIMode.Limit,
+                            onClick = {
+                                shouldShowModeMenu = false
+                                stateHolder.onSwapUIModeChange(SwapUIMode.Limit)
+                            },
+                        )
                     },
                 )
             }
