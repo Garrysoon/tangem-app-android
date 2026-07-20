@@ -146,12 +146,26 @@ internal class SwapInteractorImpl @Inject constructor(
         toSwapCurrencyStatus: SwapCurrencyStatus,
         pairs: List<SwapPairLeast>,
     ): List<SwapProvider> {
-        return pairs.firstOrNull { pair ->
+        val expressProviders = pairs.firstOrNull { pair ->
             pair.from.network == fromSwapCurrencyStatus.currency.network.rawId &&
                 pair.from.contractAddress == fromSwapCurrencyStatus.currency.getContractAddress() &&
                 pair.to.network == toSwapCurrencyStatus.currency.network.rawId &&
                 pair.to.contractAddress == toSwapCurrencyStatus.currency.getContractAddress()
         }?.providers.orEmpty()
+
+        // LI.FI meta-aggregator is available for every pair
+        val liFiProvider = SwapProvider(
+            providerId = "lifi",
+            name = "LI.FI",
+            type = ExchangeProviderType.DEX,
+            imageLarge = "",
+            rateTypes = emptyList(),
+            termsOfUse = null,
+            privacyPolicy = null,
+            slippage = null,
+        )
+
+        return expressProviders + liFiProvider
     }
 
     override fun extractFromSwapCurrencyFromPair(
@@ -288,7 +302,9 @@ internal class SwapInteractorImpl @Inject constructor(
             toDecimals = toSwapCurrencyStatus.currency.decimals,
             providerId = provider.providerId,
             rateType = RateType.FLOAT,
-            fromAddress = fromSwapCurrencyStatus.status.value.networkAddress?.defaultAddress?.value,
+            fromAddress = fromSwapCurrencyStatus.status.value.networkAddress?.defaultAddress?.value.also {
+                android.util.Log.d("SwapInteractor", "findBestQuote fromAddress=" + it + " networkAddr=" + fromSwapCurrencyStatus.status.value.networkAddress)
+            },
         )
 
         if (maybeQuotes.getOrNull()?.txType == ExpressTxType.SEND) {
@@ -367,7 +383,9 @@ internal class SwapInteractorImpl @Inject constructor(
             toDecimals = toSwapCurrencyStatus.currency.decimals,
             providerId = provider.providerId,
             rateType = RateType.FLOAT,
-            fromAddress = fromSwapCurrencyStatus.status.value.networkAddress?.defaultAddress?.value,
+            fromAddress = fromSwapCurrencyStatus.status.value.networkAddress?.defaultAddress?.value.also {
+                android.util.Log.d("SwapInteractor", "findBestQuote fromAddress=" + it + " networkAddr=" + fromSwapCurrencyStatus.status.value.networkAddress)
+            },
         )
 
         if (maybeQuotes.getOrNull()?.txType == ExpressTxType.SEND) {

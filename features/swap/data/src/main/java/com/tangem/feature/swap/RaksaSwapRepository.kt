@@ -32,6 +32,7 @@ internal class RaksaSwapRepository @Inject constructor(
     private val coWSwapApi: com.tangem.datasource.api.swap.CoWSwapApi,
     private val veloraApi: com.tangem.datasource.api.swap.VeloraApi,
     private val liFiApi: com.tangem.datasource.api.swap.LiFiApi,
+    private val providerRegistry: com.tangem.feature.swap.providers.DexProviderRegistry,
     private val coroutineDispatcher: CoroutineDispatcherProvider,
 ) : SwapRepository {
 
@@ -74,105 +75,28 @@ internal class RaksaSwapRepository @Inject constructor(
             val safeFromAddr = if (fromContractAddress.isBlank() || fromContractAddress == "0" || fromContractAddress == "0x") NATIVE else fromContractAddress
             val safeToAddr = if (toContractAddress.isBlank() || toContractAddress == "0" || toContractAddress == "0x") NATIVE else toContractAddress
 
-            if (fromNetwork.lowercase() != toNetwork.lowercase() || providerId.lowercase() == "thorchain") {
-                val isUtxo = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin") || toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
-                if (isUtxo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
-
-                // Check if same token on different chains (simple bridge)
-                val isSameToken = safeFromAddr.lowercase() == safeToAddr.lowercase()
-                if (isSameToken) {
-                    return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
-                }
-
-                // Cross-token cross-chain: swap on source chain first, then bridge
-                return@withContext fetchSwapAndBridgeQuote(
-                    fromAddr = safeFromAddr, fromNetwork = fromNetwork,
-                    toAddr = safeToAddr, toNetwork = toNetwork,
-                    amount = fromAmount, fromDec = fromDecimals, toDec = toDecimals,
-                )
-            }
-            val isUtxoFrom = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin")
-            val isUtxoTo = toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
-            if (isUtxoFrom || isUtxoTo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
-            if (!DexTokenList.isChainSupported(fromNetwork)) return@withContext ExpressDataError.UnknownError().left()
-            if (providerId.lowercase() == "across") return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
-
-            val results = mutableListOf<DexResult>()
-            try {
-                val resp = paraswapApi.getPrices(safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals, network = toChainId(fromNetwork))
-                resp.priceRoute?.let { route ->
-                    results.add(DexResult("paraswap", route.destAmount, null, route.tokenTransferProxy))
-                }
-            } catch (_: Exception) {}
-            try {
-                val slug = KYBER_SLUGS[fromNetwork.lowercase()]
-                if (slug != null) {
-                    val resp = kyberSwapApi.getRoutes(slug, safeFromAddr, safeToAddr, fromAmount)
-                    if (resp.code == 0) resp.data?.routeSummary?.let { results.add(DexResult("kyberswap", it.amountOut, it.gas?.toLongOrNull(), null)) }
-                }
-            } catch (_: Exception) {}
-
-            // Odos DEX aggregator
-            try {
-                val odosChainId = CHAIN_IDS[normalizeChainId(fromNetwork)] ?: 1
-                val odosResp = odosApi.getQuote(
-                    com.tangem.datasource.api.swap.OdosQuoteRequest(
-                        chainId = odosChainId,
-                        inputTokens = listOf(com.tangem.datasource.api.swap.OdosTokenAmount(safeFromAddr, fromAmount)),
-                        outputTokens = listOf(com.tangem.datasource.api.swap.OdosTokenProportion(safeToAddr, 1f)),
-                        slippageLimitPercent = 0.5f,
-                        userAddr = null,
-                    )
-                )
-                val odosOut = odosResp.outAmounts?.firstOrNull()
-                if (odosOut != null) {
-                    results.add(DexResult("odos", odosOut, null, null))
-                }
-            } catch (_: Exception) {}
-
-            // Velora DEX (identical API to Paraswap)
-            try {
-                val veloraResp = veloraApi.getPrices(safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals, network = toChainId(fromNetwork))
-                veloraResp.priceRoute?.let { route ->
-                    results.add(DexResult("velora", route.destAmount, null, route.tokenTransferProxy))
-                }
-            } catch (_: Exception) {}
-
-            // CoW Swap (gasless, intent-based)
-            try {
-                val cowNetwork = when(normalizeChainId(fromNetwork)) {
-                    "ethereum" -> "mainnet"
-                    "arbitrum" -> "arbitrum"
-                    "gnosis" -> "xdai"
-                    else -> "mainnet"
-                }
-                val cowResp = coWSwapApi.getQuote(
-                    cowNetwork,
-                    com.tangem.datasource.api.swap.CoWQuoteRequest(
-                        sellToken = safeFromAddr,
-                        buyToken = safeToAddr,
-                        sellAmount = fromAmount,
-                        kind = "sell",
-                        from = null,
-                    )
-                )
-                val buyAmount = cowResp.quote.buyAmount
-                if (buyAmount.isNotEmpty()) {
-                    results.add(DexResult("cowswap", buyAmount, null, null))
-                }
-            } catch (_: Exception) {}
-
-            // Li.FI meta-aggregator (covers DEX + bridge in one call)
+            // LI.FI meta-aggregator (same-chain + cross-chain)
             if (providerId.lowercase() == "lifi") {
+                if (fromAddress.isNullOrBlank()) {
+                    android.util.Log.d("RaksaSwap", "Li.FI skipped: fromAddress is null (status may still be loading)")
+                    return@withContext ExpressDataError.UnknownError().left()
+                }
                 try {
-                    val fromChainId = toChainId(fromNetwork)
-                    val toChainId = toChainId(toNetwork)
-                    val fromTokenAddr = if (safeFromAddr == NATIVE) "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE" else safeFromAddr
-                    val toTokenAddr = if (safeToAddr == NATIVE) "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE" else safeToAddr
-                    android.util.Log.d("RaksaSwap", "Li.FI quote: " + fromChainId + "/" + fromTokenAddr + " -> " + toChainId + "/" + toTokenAddr + " amount=" + fromAmount)
+                    // Use Li.FI chain keys directly (bitcoin, ethereum, tron, etc.)
+                    val liFiFromChain = normalizeChainId(fromNetwork)
+                    val liFiToChain = normalizeChainId(toNetwork)
+                    val isFromUtxo = liFiFromChain.lowercase().contains("bitcoin") || liFiFromChain.lowercase().contains("litecoin")
+                    val isToUtxo = liFiToChain.lowercase().contains("bitcoin") || liFiToChain.lowercase().contains("litecoin")
+                    val fromTokenAddr = if (safeFromAddr == NATIVE) {
+                        if (isFromUtxo) "0x0000000000000000000000000000000000000000" else "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE"
+                    } else safeFromAddr
+                    val toTokenAddr = if (safeToAddr == NATIVE) {
+                        if (isToUtxo) "0x0000000000000000000000000000000000000000" else "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE"
+                    } else safeToAddr
+                    android.util.Log.d("RaksaSwap", "Li.FI quote: " + liFiFromChain + "/" + fromTokenAddr + " -> " + liFiToChain + "/" + toTokenAddr + " amount=" + fromAmount + " addr=" + fromAddress)
                     val resp = liFiApi.getQuote(
-                        fromChain = fromChainId.toString(),
-                        toChain = toChainId.toString(),
+                        fromChain = liFiFromChain,
+                        toChain = liFiToChain,
                         fromToken = fromTokenAddr,
                         toToken = toTokenAddr,
                         fromAmount = fromAmount,
@@ -196,13 +120,47 @@ internal class RaksaSwapRepository @Inject constructor(
                 return@withContext ExpressDataError.UnknownError().left()
             }
 
-            if (results.isEmpty()) return@withContext ExpressDataError.UnknownError().left()
-            // Return result for the REQUESTED provider, not the global best
-            val requested = results.firstOrNull { it.source.lowercase() == providerId.lowercase() }
-            val best = requested ?: results.maxByOrNull { it.amountOutRaw.toBigDecimalOrNull() ?: BigDecimal.ZERO } ?: results.first()
-            val amountOut = rawToAmount(best.amountOutRaw, toDecimals)
-            android.util.Log.d("RaksaSwap", "Provider=" + providerId + " -> result from " + best.source + " amount=" + amountOut)
-            QuoteModel(toTokenAmount = SwapAmount(amountOut, toDecimals), allowanceContract = best.allowanceContract, txType = ExpressTxType.SWAP, providerId = providerId).right()
+            if (fromNetwork.lowercase() != toNetwork.lowercase() || providerId.lowercase() == "thorchain") {
+                val isUtxo = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin") || toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
+                if (isUtxo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+
+                // Check if same token on different chains (simple bridge)
+                val isSameToken = safeFromAddr.lowercase() == safeToAddr.lowercase()
+                if (isSameToken) {
+                    return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+                }
+
+                // Cross-token cross-chain: swap on source chain first, then bridge
+                return@withContext fetchSwapAndBridgeQuote(
+                    fromAddr = safeFromAddr, fromNetwork = fromNetwork,
+                    toAddr = safeToAddr, toNetwork = toNetwork,
+                    amount = fromAmount, fromDec = fromDecimals, toDec = toDecimals,
+                )
+            }
+            val isUtxoFrom = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin")
+            val isUtxoTo = toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
+            if (isUtxoFrom || isUtxoTo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+            if (!DexTokenList.isChainSupported(fromNetwork)) return@withContext ExpressDataError.UnknownError().left()
+            if (providerId.lowercase() == "across") return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+
+            // Delegate to provider registry - each provider queries only its own API
+            val provider = providerRegistry.getProvider(providerId)
+            if (provider != null && provider.isSupported(fromNetwork, toNetwork)) {
+                android.util.Log.d("RaksaSwap", "Delegating to DexProvider: $providerId")
+                return@withContext provider.getQuote(
+                    userWallet = userWallet,
+                    fromContractAddress = fromContractAddress,
+                    fromNetwork = fromNetwork,
+                    toContractAddress = toContractAddress,
+                    toNetwork = toNetwork,
+                    fromAmount = fromAmount,
+                    fromDecimals = fromDecimals,
+                    toDecimals = toDecimals,
+                    fromAddress = fromAddress,
+                )
+            }
+            android.util.Log.d("RaksaSwap", "Provider=$providerId not supported for $fromNetwork->$toNetwork")
+            ExpressDataError.UnknownError().left()
         } catch (e: Exception) { ExpressDataError.UnknownError().left() }
     }
 

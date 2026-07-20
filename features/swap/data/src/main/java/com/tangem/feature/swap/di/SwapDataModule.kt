@@ -46,6 +46,7 @@ internal class SwapDataModule {
         coWSwapApi: com.tangem.datasource.api.swap.CoWSwapApi,
         veloraApi: com.tangem.datasource.api.swap.VeloraApi,
         liFiApi: com.tangem.datasource.api.swap.LiFiApi,
+        providerRegistry: com.tangem.feature.swap.providers.DexProviderRegistry,
         coroutineDispatcher: CoroutineDispatcherProvider,
     ): SwapRepository {
         return RaksaSwapRepository(
@@ -57,6 +58,7 @@ internal class SwapDataModule {
             coWSwapApi = coWSwapApi,
             veloraApi = veloraApi,
             liFiApi = liFiApi,
+            providerRegistry = providerRegistry,
             coroutineDispatcher = coroutineDispatcher,
         )
     }
