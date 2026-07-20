@@ -77,69 +77,60 @@ internal class RaksaSwapRepository @Inject constructor(
 
             // LI.FI meta-aggregator (same-chain + cross-chain)
             if (providerId.lowercase() == "lifi") {
-                if (fromAddress.isNullOrBlank()) {
-                    android.util.Log.d("RaksaSwap", "Li.FI skipped: fromAddress is null (status may still be loading)")
-                    return@withContext ExpressDataError.UnknownError().left()
+                if (!fromAddress.isNullOrBlank()) {
+                    try {
+                        val liFiFromChain = normalizeChainId(fromNetwork)
+                        val liFiToChain = normalizeChainId(toNetwork)
+                        val isFromUtxo = liFiFromChain.lowercase().contains("bitcoin") || liFiFromChain.lowercase().contains("litecoin")
+                        val isToUtxo = liFiToChain.lowercase().contains("bitcoin") || liFiToChain.lowercase().contains("litecoin")
+                        val fromTokenAddr = if (safeFromAddr == NATIVE) { if (isFromUtxo) "0x0000000000000000000000000000000000000000" else "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE" } else safeFromAddr
+                        val toTokenAddr = if (safeToAddr == NATIVE) { if (isToUtxo) "0x0000000000000000000000000000000000000000" else "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE" } else safeToAddr
+                        val resp = liFiApi.getQuote(fromChain = liFiFromChain, toChain = liFiToChain, fromToken = fromTokenAddr, toToken = toTokenAddr, fromAmount = fromAmount, fromAddress = fromAddress)
+                        val toAmountStr = resp.estimate?.toAmount
+                        if (toAmountStr != null) {
+                            return@withContext QuoteModel(toTokenAmount = SwapAmount(rawToAmount(toAmountStr, toDecimals), toDecimals), allowanceContract = resp.estimate?.approvalAddress, txType = ExpressTxType.SWAP, providerId = "lifi").right()
+                        }
+                    } catch (e: Exception) { android.util.Log.e("RaksaSwap", "Li.FI error: " + e.message) }
                 }
-                try {
-                    // Use Li.FI chain keys directly (bitcoin, ethereum, tron, etc.)
-                    val liFiFromChain = normalizeChainId(fromNetwork)
-                    val liFiToChain = normalizeChainId(toNetwork)
-                    val isFromUtxo = liFiFromChain.lowercase().contains("bitcoin") || liFiFromChain.lowercase().contains("litecoin")
-                    val isToUtxo = liFiToChain.lowercase().contains("bitcoin") || liFiToChain.lowercase().contains("litecoin")
-                    val fromTokenAddr = if (safeFromAddr == NATIVE) {
-                        if (isFromUtxo) "0x0000000000000000000000000000000000000000" else "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE"
-                    } else safeFromAddr
-                    val toTokenAddr = if (safeToAddr == NATIVE) {
-                        if (isToUtxo) "0x0000000000000000000000000000000000000000" else "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE"
-                    } else safeToAddr
-                    android.util.Log.d("RaksaSwap", "Li.FI quote: " + liFiFromChain + "/" + fromTokenAddr + " -> " + liFiToChain + "/" + toTokenAddr + " amount=" + fromAmount + " addr=" + fromAddress)
-                    val resp = liFiApi.getQuote(
-                        fromChain = liFiFromChain,
-                        toChain = liFiToChain,
-                        fromToken = fromTokenAddr,
-                        toToken = toTokenAddr,
-                        fromAmount = fromAmount,
-                        fromAddress = fromAddress,
-                    )
-                    val estimate = resp.estimate
-                    val toAmountStr = estimate?.toAmount
-                    if (toAmountStr != null) {
-                        val liFiAmount = rawToAmount(toAmountStr, toDecimals)
-                        android.util.Log.d("RaksaSwap", "Li.FI result: " + resp.tool + " amount=" + liFiAmount)
-                        return@withContext QuoteModel(
-                            toTokenAmount = SwapAmount(liFiAmount, toDecimals),
-                            allowanceContract = estimate.approvalAddress,
-                            txType = ExpressTxType.SWAP,
-                            providerId = "lifi",
-                        ).right()
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("RaksaSwap", "Li.FI error: " + e.message)
+                // LI.FI failed - for cross-chain fall through to thorchain, for same-chain return error
+                if (fromNetwork.lowercase() != toNetwork.lowercase()) {
+                    android.util.Log.d("RaksaSwap", "Li.FI failed for cross-chain, falling back to thorchain")
+                    return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
                 }
                 return@withContext ExpressDataError.UnknownError().left()
             }
 
-            if (fromNetwork.lowercase() != toNetwork.lowercase() || providerId.lowercase() == "thorchain") {
-                val isUtxo = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin") || toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
-                if (isUtxo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
-
-                // Check if same token on different chains (simple bridge)
-                val isSameToken = safeFromAddr.lowercase() == safeToAddr.lowercase()
-                if (isSameToken) {
-                    return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+            // Cross-chain routing: only thorchain, across, lifi support cross-chain
+            if (fromNetwork.lowercase() != toNetwork.lowercase()) {
+                return@withContext when (providerId.lowercase()) {
+                    "thorchain" -> {
+                        val isUtxo = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin") || toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
+                        if (isUtxo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+                        val isSameToken = safeFromAddr.lowercase() == safeToAddr.lowercase()
+                        if (isSameToken) {
+                            fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+                        } else {
+                            fetchSwapAndBridgeQuote(fromAddr = safeFromAddr, fromNetwork = fromNetwork, toAddr = safeToAddr, toNetwork = toNetwork, amount = fromAmount, fromDec = fromDecimals, toDec = toDecimals)
+                        }
+                    }
+                    "across" -> fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+                    "lifi" -> ExpressDataError.UnknownError().left() // handled above
+                    else -> {
+                        android.util.Log.d("RaksaSwap", "Provider=$providerId does not support cross-chain, falling back to thorchain")
+                        fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+                    }
                 }
-
-                // Cross-token cross-chain: swap on source chain first, then bridge
-                return@withContext fetchSwapAndBridgeQuote(
-                    fromAddr = safeFromAddr, fromNetwork = fromNetwork,
-                    toAddr = safeToAddr, toNetwork = toNetwork,
-                    amount = fromAmount, fromDec = fromDecimals, toDec = toDecimals,
-                )
             }
+
+            // UTXO same-chain (e.g. BTC->BTC): only thorchain supports this
             val isUtxoFrom = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin")
             val isUtxoTo = toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
-            if (isUtxoFrom || isUtxoTo) return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+            if (isUtxoFrom || isUtxoTo) {
+                if (providerId.lowercase() != "thorchain") {
+                    android.util.Log.d("RaksaSwap", "Provider=$providerId does not support UTXO, falling back to thorchain")
+                }
+                return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+            }
             if (!DexTokenList.isChainSupported(fromNetwork)) return@withContext ExpressDataError.UnknownError().left()
             if (providerId.lowercase() == "across") return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
 
