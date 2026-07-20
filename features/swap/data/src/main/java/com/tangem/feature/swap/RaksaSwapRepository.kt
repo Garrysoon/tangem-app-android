@@ -54,7 +54,7 @@ internal class RaksaSwapRepository @Inject constructor(
         rateTypes = listOf(RateType.FLOAT), imageLarge = "",
         termsOfUse = null, privacyPolicy = null, slippage = null,
     )
-    private val providers = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"), dexProvider("lifi", "LI.FI"))
+    private val providers = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"), dexProvider("velora", "Velora"), dexProvider("odos", "Odos"), dexProvider("cowswap", "CoW Swap"), dexProvider("lifi", "LI.FI"))
 
     override suspend fun getPairs(userWallet: UserWallet, initialCurrency: LeastTokenInfo, currencyList: List<CryptoCurrency>): PairsWithProviders = getPairsOnly(userWallet, initialCurrency, currencyList)
 

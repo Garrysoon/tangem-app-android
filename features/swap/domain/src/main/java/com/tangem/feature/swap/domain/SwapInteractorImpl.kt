@@ -153,19 +153,21 @@ internal class SwapInteractorImpl @Inject constructor(
                 pair.to.contractAddress == toSwapCurrencyStatus.currency.getContractAddress()
         }?.providers.orEmpty()
 
-        // LI.FI meta-aggregator is available for every pair
-        val liFiProvider = SwapProvider(
-            providerId = "lifi",
-            name = "LI.FI",
-            type = ExchangeProviderType.DEX,
-            imageLarge = "",
-            rateTypes = emptyList(),
-            termsOfUse = null,
-            privacyPolicy = null,
-            slippage = null,
+        // All DEX providers from registry - each available for any same-chain pair
+        val registryProviders = listOf(
+            SwapProvider(providerId = "paraswap", name = "Paraswap", type = ExchangeProviderType.DEX, imageLarge = "", rateTypes = listOf(RateType.FLOAT), termsOfUse = null, privacyPolicy = null, slippage = null),
+            SwapProvider(providerId = "kyberswap", name = "KyberSwap", type = ExchangeProviderType.DEX, imageLarge = "", rateTypes = listOf(RateType.FLOAT), termsOfUse = null, privacyPolicy = null, slippage = null),
+            SwapProvider(providerId = "velora", name = "Velora", type = ExchangeProviderType.DEX, imageLarge = "", rateTypes = listOf(RateType.FLOAT), termsOfUse = null, privacyPolicy = null, slippage = null),
+            SwapProvider(providerId = "odos", name = "Odos", type = ExchangeProviderType.DEX, imageLarge = "", rateTypes = listOf(RateType.FLOAT), termsOfUse = null, privacyPolicy = null, slippage = null),
+            SwapProvider(providerId = "cowswap", name = "CoW Swap", type = ExchangeProviderType.DEX, imageLarge = "", rateTypes = listOf(RateType.FLOAT), termsOfUse = null, privacyPolicy = null, slippage = null),
+            SwapProvider(providerId = "lifi", name = "LI.FI", type = ExchangeProviderType.DEX, imageLarge = "", rateTypes = emptyList(), termsOfUse = null, privacyPolicy = null, slippage = null),
         )
 
-        return expressProviders + liFiProvider
+        // Merge: Express providers + registry providers (dedup by providerId)
+        val allIds = expressProviders.map { it.providerId.lowercase() }.toMutableSet()
+        val extras = registryProviders.filter { it.providerId.lowercase() !in allIds }
+
+        return expressProviders + extras
     }
 
     override fun extractFromSwapCurrencyFromPair(

@@ -18,6 +18,7 @@ internal fun isNativeToken(addr: String?): Boolean {
     if (addr.isNullOrBlank()) return true
     val lower = addr.lowercase()
     return lower == NATIVE_ADDR.lowercase() || lower == ZERO_ADDR.lowercase()
+        || lower == "0" || lower == "0x" || lower == "0x0"
 }
 
 /**
@@ -31,7 +32,7 @@ internal fun forParaswap(addr: String?): String {
 }
 
 internal fun safeTokenAddr(addr: String?, isUtxo: Boolean = false): String {
-    if (addr.isNullOrBlank() || addr in listOf("0", "0x")) return if (isUtxo) ZERO_ADDR else NATIVE_ADDR
+    if (addr.isNullOrBlank() || addr in listOf("0", "0x", "0x0")) return if (isUtxo) ZERO_ADDR else NATIVE_ADDR
     return addr
 }
 
