@@ -94,6 +94,9 @@ import com.tangem.feature.swap.models.SwapStateHolder
 import com.tangem.feature.swap.models.LimitOrderItem
 import com.tangem.feature.swap.models.LimitOrderProtocol
 import com.tangem.feature.swap.models.LimitOrderState
+import com.tangem.common.ui.account.AccountTitleUM
+import com.tangem.feature.swap.models.SwapCardState
+import com.tangem.feature.swap.models.TransactionCardType
 import com.tangem.feature.swap.models.SwapButton
 import com.tangem.feature.swap.models.TokenSelectionDirection
 import com.tangem.feature.swap.models.UiActions
@@ -568,6 +571,11 @@ internal class SwapModel @Inject constructor(
             val receiveAmount = currentLoadedState?.toTokenInfo?.tokenAmount?.value?.toPlainString()
             lastAmount.value = receiveAmount ?: INITIAL_AMOUNT
             lastReducedBalanceBy.value = BigDecimal.ZERO
+
+            uiState = uiState.copy(
+                sendCardData = SwapCardState.Loading(type = TransactionCardType.Inputtable(onAmountChanged = {}, onFocusChanged = {}, inputError = TransactionCardType.InputError.Empty, accountTitleUM = AccountTitleUM.Text(title = com.tangem.core.ui.extensions.stringReference("")), isEnabled = false)),
+                receiveCardData = SwapCardState.Loading(type = TransactionCardType.ReadOnly(accountTitleUM = AccountTitleUM.Text(title = com.tangem.core.ui.extensions.stringReference("")))),
+            )
 
             dataState = SwapProcessDataState(
                 fromSwapCurrencyStatus = newFromSwapCurrencyStatus,
