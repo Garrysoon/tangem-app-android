@@ -23,7 +23,7 @@ class VeloraDexProvider @Inject constructor(private val veloraApi: VeloraApi) : 
 
     override suspend fun getQuote(userWallet: UserWallet, fromContractAddress: String, fromNetwork: String, toContractAddress: String, toNetwork: String, fromAmount: String, fromDecimals: Int, toDecimals: Int, fromAddress: String?): Either<ExpressDataError, QuoteModel> {
         return try {
-            val resp = veloraApi.getPrices(safeTokenAddr(fromContractAddress), safeTokenAddr(toContractAddress), fromAmount, fromDecimals, toDecimals, network = chainToId(fromNetwork))
+            val resp = veloraApi.getPrices(forParaswap(fromContractAddress), forParaswap(toContractAddress), fromAmount, fromDecimals, toDecimals, network = chainToId(fromNetwork))
             val route = resp.priceRoute ?: return ExpressDataError.UnknownError().left()
             QuoteModel(toTokenAmount = SwapAmount(rawToAmount(route.destAmount, toDecimals), toDecimals), allowanceContract = route.tokenTransferProxy, txType = ExpressTxType.SWAP, providerId = providerId).right()
         } catch (e: Exception) { ExpressDataError.UnknownError().left() }
@@ -31,7 +31,7 @@ class VeloraDexProvider @Inject constructor(private val veloraApi: VeloraApi) : 
 
     override suspend fun buildTx(userWallet: UserWallet, fromContractAddress: String, fromNetwork: String, toContractAddress: String, toNetwork: String, fromAmount: String, fromDecimals: Int, toDecimals: Int, fromAddress: String, toAddress: String): Either<ExpressDataError, SwapDataModel> {
         return try {
-            val from = safeTokenAddr(fromContractAddress); val to = safeTokenAddr(toContractAddress); val cid = chainToId(fromNetwork)
+            val from = forParaswap(fromContractAddress); val to = forParaswap(toContractAddress); val cid = chainToId(fromNetwork)
             val pr = veloraApi.getPrices(from, to, fromAmount, fromDecimals, toDecimals, network = cid).priceRoute ?: return ExpressDataError.UnknownError().left()
             val minOut = (pr.destAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO).multiply(BigDecimal("0.99")).toBigInteger().toString()
             val tx = veloraApi.buildTransaction(chainId = cid, body = ParaswapTxRequest(from, to, fromAmount, minOut, pr, fromAddress, toAddress, fromDecimals, toDecimals))

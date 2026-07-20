@@ -44,7 +44,7 @@ internal class RaksaSwapRepository @Inject constructor(
     )
 
     companion object {
-        private const val NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+        private const val NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE"
         private val CHAIN_IDS = mapOf("ethereum" to 1, "arbitrum" to 42161, "optimism" to 10, "base" to 8453, "polygon" to 137, "bsc" to 56)
         private val KYBER_SLUGS = mapOf("ethereum" to "ethereum", "arbitrum" to "arbitrum", "optimism" to "optimism", "base" to "base", "polygon" to "polygon", "bsc" to "bsc")
     }
