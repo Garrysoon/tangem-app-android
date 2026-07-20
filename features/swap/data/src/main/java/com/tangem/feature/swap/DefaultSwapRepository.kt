@@ -271,6 +271,7 @@ internal class DefaultSwapRepository(
         toDecimals: Int,
         providerId: String,
         rateType: RateType,
+        fromAddress: String?,
     ): Either<ExpressDataError, QuoteModel> {
         return withContext(coroutineDispatcher.io) {
             try {

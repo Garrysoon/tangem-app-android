@@ -586,12 +586,8 @@ internal class SwapModel @Inject constructor(
             val newToSwapCurrencyStatus = dataState.fromSwapCurrencyStatus
 
             isAmountChangedByUser = true
-            // Preserve the calculated "you receive" amount as the new "you send" amount
-            val currentState = dataState
-            val currentLoadedState = currentState.lastLoadedSwapStates[currentState.selectedProvider]
-                as? com.tangem.feature.swap.domain.models.ui.SwapState.QuotesLoadedState
-            val receiveAmount = currentLoadedState?.toTokenInfo?.tokenAmount?.value?.toPlainString()
-            lastAmount.value = receiveAmount ?: INITIAL_AMOUNT
+            // Keep the current amount unchanged (Velora-style: amount stays, direction swaps)
+            // lastAmount.value stays as-is
             lastReducedBalanceBy.value = BigDecimal.ZERO
 
             uiState = uiState.copy(
@@ -2774,7 +2770,7 @@ internal class SwapModel @Inject constructor(
     }
 
     private companion object {
-        const val INITIAL_AMOUNT = ""
+        const val INITIAL_AMOUNT = "1"
         const val UPDATE_DELAY = 10000L
         const val DEBOUNCE_AMOUNT_DELAY = 1000L
         const val UPDATE_BALANCE_DELAY_MILLIS = 11000L

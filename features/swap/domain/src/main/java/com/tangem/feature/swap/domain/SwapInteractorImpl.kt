@@ -288,6 +288,7 @@ internal class SwapInteractorImpl @Inject constructor(
             toDecimals = toSwapCurrencyStatus.currency.decimals,
             providerId = provider.providerId,
             rateType = RateType.FLOAT,
+            fromAddress = fromSwapCurrencyStatus.status.value.networkAddress?.defaultAddress?.value,
         )
 
         if (maybeQuotes.getOrNull()?.txType == ExpressTxType.SEND) {
@@ -366,6 +367,7 @@ internal class SwapInteractorImpl @Inject constructor(
             toDecimals = toSwapCurrencyStatus.currency.decimals,
             providerId = provider.providerId,
             rateType = RateType.FLOAT,
+            fromAddress = fromSwapCurrencyStatus.status.value.networkAddress?.defaultAddress?.value,
         )
 
         if (maybeQuotes.getOrNull()?.txType == ExpressTxType.SEND) {

@@ -31,6 +31,7 @@ internal class RaksaSwapRepository @Inject constructor(
     private val odosApi: com.tangem.datasource.api.swap.OdosApi,
     private val coWSwapApi: com.tangem.datasource.api.swap.CoWSwapApi,
     private val veloraApi: com.tangem.datasource.api.swap.VeloraApi,
+    private val liFiApi: com.tangem.datasource.api.swap.LiFiApi,
     private val coroutineDispatcher: CoroutineDispatcherProvider,
 ) : SwapRepository {
 
@@ -52,7 +53,7 @@ internal class RaksaSwapRepository @Inject constructor(
         rateTypes = listOf(RateType.FLOAT), imageLarge = "",
         termsOfUse = null, privacyPolicy = null, slippage = null,
     )
-    private val providers = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"))
+    private val providers = listOf(dexProvider("paraswap", "Paraswap"), dexProvider("kyberswap", "KyberSwap"), dexProvider("lifi", "LI.FI"))
 
     override suspend fun getPairs(userWallet: UserWallet, initialCurrency: LeastTokenInfo, currencyList: List<CryptoCurrency>): PairsWithProviders = getPairsOnly(userWallet, initialCurrency, currencyList)
 
@@ -66,6 +67,7 @@ internal class RaksaSwapRepository @Inject constructor(
         toContractAddress: String, toNetwork: String,
         fromAmount: String, fromDecimals: Int, toDecimals: Int,
         providerId: String, rateType: RateType,
+        fromAddress: String?,
     ): Either<ExpressDataError, QuoteModel> = withContext(coroutineDispatcher.io) {
         try {
             android.util.Log.d("RaksaSwap", "findBestQuote: from=$fromNetwork to=$toNetwork fromAddr=$fromContractAddress provider=$providerId")
@@ -160,11 +162,47 @@ internal class RaksaSwapRepository @Inject constructor(
                 }
             } catch (_: Exception) {}
 
+            // Li.FI meta-aggregator (covers DEX + bridge in one call)
+            if (providerId.lowercase() == "lifi") {
+                try {
+                    val fromChainId = toChainId(fromNetwork)
+                    val toChainId = toChainId(toNetwork)
+                    val fromTokenAddr = if (safeFromAddr == NATIVE) "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE" else safeFromAddr
+                    val toTokenAddr = if (safeToAddr == NATIVE) "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE" else safeToAddr
+                    android.util.Log.d("RaksaSwap", "Li.FI quote: " + fromChainId + "/" + fromTokenAddr + " -> " + toChainId + "/" + toTokenAddr + " amount=" + fromAmount)
+                    val resp = liFiApi.getQuote(
+                        fromChain = fromChainId.toString(),
+                        toChain = toChainId.toString(),
+                        fromToken = fromTokenAddr,
+                        toToken = toTokenAddr,
+                        fromAmount = fromAmount,
+                        fromAddress = fromAddress,
+                    )
+                    val estimate = resp.estimate
+                    val toAmountStr = estimate?.toAmount
+                    if (toAmountStr != null) {
+                        val liFiAmount = rawToAmount(toAmountStr, toDecimals)
+                        android.util.Log.d("RaksaSwap", "Li.FI result: " + resp.tool + " amount=" + liFiAmount)
+                        return@withContext QuoteModel(
+                            toTokenAmount = SwapAmount(liFiAmount, toDecimals),
+                            allowanceContract = estimate.approvalAddress,
+                            txType = ExpressTxType.SWAP,
+                            providerId = "lifi",
+                        ).right()
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("RaksaSwap", "Li.FI error: " + e.message)
+                }
+                return@withContext ExpressDataError.UnknownError().left()
+            }
+
             if (results.isEmpty()) return@withContext ExpressDataError.UnknownError().left()
-            val best = results.maxByOrNull { it.amountOutRaw.toBigDecimalOrNull() ?: BigDecimal.ZERO } ?: results.first()
+            // Return result for the REQUESTED provider, not the global best
+            val requested = results.firstOrNull { it.source.lowercase() == providerId.lowercase() }
+            val best = requested ?: results.maxByOrNull { it.amountOutRaw.toBigDecimalOrNull() ?: BigDecimal.ZERO } ?: results.first()
             val amountOut = rawToAmount(best.amountOutRaw, toDecimals)
-            android.util.Log.d("RaksaSwap", "Best provider: " + best.source)
-            QuoteModel(toTokenAmount = SwapAmount(amountOut, toDecimals), allowanceContract = best.allowanceContract, txType = ExpressTxType.SWAP, providerId = best.source).right()
+            android.util.Log.d("RaksaSwap", "Provider=" + providerId + " -> result from " + best.source + " amount=" + amountOut)
+            QuoteModel(toTokenAmount = SwapAmount(amountOut, toDecimals), allowanceContract = best.allowanceContract, txType = ExpressTxType.SWAP, providerId = providerId).right()
         } catch (e: Exception) { ExpressDataError.UnknownError().left() }
     }
 

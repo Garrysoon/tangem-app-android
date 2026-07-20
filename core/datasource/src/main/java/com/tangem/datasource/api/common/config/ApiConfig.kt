@@ -42,6 +42,7 @@ sealed class ApiConfig {
         Odos,
         CoWSwap,
         Velora,
+        LiFi,
     }
 
     private fun initializeId(): ID {
@@ -67,6 +68,7 @@ sealed class ApiConfig {
             is Odos -> ID.Odos
             is CoWSwap -> ID.CoWSwap
             is Velora -> ID.Velora
+        is LiFi -> ID.LiFi
         }
     }
 

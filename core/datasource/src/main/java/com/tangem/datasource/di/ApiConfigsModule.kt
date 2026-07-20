@@ -167,4 +167,10 @@ internal object ApiConfigsModule {
     fun provideVeloraConfig(): ApiConfig {
         return Velora()
     }
+
+    @Provides
+    @IntoSet
+    fun provideLiFiConfig(): ApiConfig {
+        return LiFi()
+    }
 }

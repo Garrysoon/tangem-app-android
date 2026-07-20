@@ -42,6 +42,7 @@ interface SwapRepository {
         toDecimals: Int,
         providerId: String,
         rateType: RateType,
+        fromAddress: String? = null,
     ): Either<ExpressDataError, QuoteModel>
 
     @Suppress("LongParameterList")
