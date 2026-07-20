@@ -79,6 +79,15 @@ internal class InitialCurrenciesResolver @Inject constructor(
 
             if (selectedSwapCurrencyStatus == null) {
                 null to null
+            } else if (swapCurrencyPosition == CurrencyPosition.ANY) {
+                // User entered from token detail -> always place as FROM
+                // Auto-suggest best TO (stablecoin or BTC on destination chain)
+                val suggestedTo = TokenPairSuggester.suggest(
+                    fromToken = selectedSwapCurrencyStatus,
+                    availableTokens = cryptoCurrencyList,
+                    alreadySelectedTo = null,
+                )
+                selectedSwapCurrencyStatus to suggestedTo
             } else {
                 placeSelectedCurrency(
                     selectedSwapCurrencyStatus = selectedSwapCurrencyStatus,
