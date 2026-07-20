@@ -114,6 +114,7 @@ import com.tangem.features.send.v2.api.entity.FeeItem
 import com.tangem.features.send.v2.api.entity.FeeSelectorUM
 import com.tangem.features.send.v2.api.subcomponents.feeSelector.FeeSelectorReloadTrigger
 import com.tangem.features.swap.SwapComponent
+import com.tangem.features.swap.SwapComponent.Params.CurrencyPosition
 import com.tangem.features.swap.SwapFeatureToggles
 import com.tangem.utils.Provider
 import com.tangem.utils.coroutines.*
@@ -381,22 +382,32 @@ internal class SwapModel @Inject constructor(
         modelScope.launch(dispatchers.default) {
             isAccountsMode = isAccountsModeEnabledUseCase.invokeSync()
 
+            // When entering from token detail, force FROM position + auto-suggest best stablecoin as TO
+            val effectivePosition = if (initialCryptoCurrency != null) {
+                CurrencyPosition.FROM
+            } else {
+                params.currencyPosition
+            }
+
             val (fromSwapCurrencyStatus, toSwapCurrencyStatus) = initialCurrenciesResolver(
                 userWalletId = params.userWalletId,
                 initialCryptoCurrency = initialCryptoCurrency,
-                swapCurrencyPosition = params.currencyPosition,
+                swapCurrencyPosition = effectivePosition,
                 isPaymentAccount = params.tangemPayInput != null,
             )
 
-            // Post-processing: if user entered from token detail and token ended up in TO,
-            // swap it to FROM
-            var finalFrom = fromSwapCurrencyStatus
-            var finalTo = toSwapCurrencyStatus
-            if (initialCryptoCurrency != null && finalTo != null && finalFrom != null &&
-                finalTo.currency.id == initialCryptoCurrency.id) {
-                // Token went to TO - swap FROM and TO
-                finalFrom = finalTo
-                finalTo = fromSwapCurrencyStatus
+            // Auto-suggest best stablecoin as TO when entering from token detail
+            val finalFrom = fromSwapCurrencyStatus
+            val finalTo = if (initialCryptoCurrency != null && fromSwapCurrencyStatus != null && toSwapCurrencyStatus == null) {
+                val allTokens = initialCurrenciesResolver.getAvailableTokens(params.userWalletId)
+                android.util.Log.d("SwapInit", "from=" + fromSwapCurrencyStatus.currency.symbol + " allTokens=" + allTokens.size + " availStablecoins=" + allTokens.filter { com.tangem.domain.swap.models.StablecoinDetector.isStablecoin(it.currency) && it.isAvailableForSwap }.map { it.currency.symbol + "(" + it.isAvailableForSwap + ")" })
+                TokenPairSuggester.suggest(
+                    fromToken = fromSwapCurrencyStatus,
+                    availableTokens = allTokens,
+                    alreadySelectedTo = null,
+                )
+            } else {
+                toSwapCurrencyStatus
             }
 
             preselectedFromCurrency = finalFrom?.currency
@@ -437,15 +448,15 @@ internal class SwapModel @Inject constructor(
                         },
                     ),
                 ),
-                fromSwapCurrencyStatus = fromSwapCurrencyStatus,
-                toSwapCurrencyStatus = toSwapCurrencyStatus,
+                fromSwapCurrencyStatus = finalFrom,
+                toSwapCurrencyStatus = finalTo,
             )
 
             // Check swap availability if there is pair
-            if (fromSwapCurrencyStatus != null && toSwapCurrencyStatus != null) {
+            if (finalFrom != null && finalTo != null) {
                 initSwapPairs(
-                    fromSwapCurrencyStatus = fromSwapCurrencyStatus,
-                    toSwapCurrencyStatus = toSwapCurrencyStatus,
+                    fromSwapCurrencyStatus = finalFrom,
+                    toSwapCurrencyStatus = finalTo,
                 )
             }
         }

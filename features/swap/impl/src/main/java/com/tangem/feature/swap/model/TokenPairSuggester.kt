@@ -17,7 +17,7 @@ object TokenPairSuggester {
         // FROM is stablecoin -> suggest BTC with highest fiat balance
         if (StablecoinDetector.isStablecoin(fromToken.currency)) {
             return availableTokens
-                .filter { StablecoinDetector.isBtc(it.currency) && it.isAvailableForSwap }
+                .filter { StablecoinDetector.isBtc(it.currency)  }
                 .maxByOrNull { it.status.value.fiatAmount.orZero() }
         }
 
@@ -26,11 +26,11 @@ object TokenPairSuggester {
         val sameChain = availableTokens.filter {
             StablecoinDetector.isStablecoin(it.currency)
             && it.currency.network.rawId.lowercase() == fromToken.currency.network.rawId.lowercase()
-            && it.isAvailableForSwap
+            
         }
         val fromId = fromToken.currency.id.value
         val allStablecoins = availableTokens.filter {
-            StablecoinDetector.isStablecoin(it.currency) && it.isAvailableForSwap
+            StablecoinDetector.isStablecoin(it.currency) 
         }
         return allStablecoins.maxByOrNull { stablecoin: SwapCurrencyStatus ->
             val cachedRate = StablecoinRateCache.getRate(fromId, stablecoin.currency.id.value)
