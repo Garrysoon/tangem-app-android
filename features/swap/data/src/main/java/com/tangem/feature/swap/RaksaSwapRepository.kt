@@ -30,6 +30,7 @@ internal class RaksaSwapRepository @Inject constructor(
     private val acrossBridgeApi: AcrossBridgeApi,
     private val odosApi: com.tangem.datasource.api.swap.OdosApi,
     private val coWSwapApi: com.tangem.datasource.api.swap.CoWSwapApi,
+    private val veloraApi: com.tangem.datasource.api.swap.VeloraApi,
     private val coroutineDispatcher: CoroutineDispatcherProvider,
 ) : SwapRepository {
 
@@ -127,6 +128,14 @@ internal class RaksaSwapRepository @Inject constructor(
                 }
             } catch (_: Exception) {}
 
+            // Velora DEX (identical API to Paraswap)
+            try {
+                val veloraResp = veloraApi.getPrices(safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals, network = toChainId(fromNetwork))
+                veloraResp.priceRoute?.let { route ->
+                    results.add(DexResult("velora", route.destAmount, null, route.tokenTransferProxy))
+                }
+            } catch (_: Exception) {}
+
             // CoW Swap (gasless, intent-based)
             try {
                 val cowNetwork = when(normalizeChainId(fromNetwork)) {
@@ -192,6 +201,13 @@ internal class RaksaSwapRepository @Inject constructor(
                     safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount,
                     fromDecimals, toDecimals, fromAddress, toAddress,
                 )
+                providerId.lowercase() == "velora" -> {
+                    android.util.Log.d("RaksaSwap", "Velora tx building (same as Paraswap)")
+                    buildParaswapTx(
+                        safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals,
+                        fromNetwork, fromAddress, toAddress,
+                    )
+                }
                 providerId.lowercase() == "cowswap" -> {
                     android.util.Log.w("RaksaSwap", "CoW Swap tx building not implemented")
                     ExpressDataError.UnknownError().left()

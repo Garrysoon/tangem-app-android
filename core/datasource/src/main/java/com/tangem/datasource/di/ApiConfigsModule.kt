@@ -161,4 +161,10 @@ internal object ApiConfigsModule {
     fun provideCoWSwapConfig(): ApiConfig {
         return CoWSwap()
     }
+
+    @Provides
+    @IntoSet
+    fun provideVeloraConfig(): ApiConfig {
+        return Velora()
+    }
 }

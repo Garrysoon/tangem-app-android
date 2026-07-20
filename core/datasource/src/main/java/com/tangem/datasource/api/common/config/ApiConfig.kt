@@ -41,6 +41,7 @@ sealed class ApiConfig {
         LimitOrder,
         Odos,
         CoWSwap,
+        Velora,
     }
 
     private fun initializeId(): ID {
@@ -65,6 +66,7 @@ sealed class ApiConfig {
             is LimitOrder -> ID.LimitOrder
             is Odos -> ID.Odos
             is CoWSwap -> ID.CoWSwap
+            is Velora -> ID.Velora
         }
     }
 

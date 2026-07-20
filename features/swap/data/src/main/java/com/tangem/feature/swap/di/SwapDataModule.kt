@@ -44,6 +44,7 @@ internal class SwapDataModule {
         thorchainApi: ThorchainApi,
         odosApi: com.tangem.datasource.api.swap.OdosApi,
         coWSwapApi: com.tangem.datasource.api.swap.CoWSwapApi,
+        veloraApi: com.tangem.datasource.api.swap.VeloraApi,
         coroutineDispatcher: CoroutineDispatcherProvider,
     ): SwapRepository {
         return RaksaSwapRepository(
@@ -53,6 +54,7 @@ internal class SwapDataModule {
             thorchainApi = thorchainApi,
             odosApi = odosApi,
             coWSwapApi = coWSwapApi,
+            veloraApi = veloraApi,
             coroutineDispatcher = coroutineDispatcher,
         )
     }

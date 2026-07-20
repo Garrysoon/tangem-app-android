@@ -17,6 +17,7 @@ import com.tangem.datasource.api.swap.KyberSwapApi
 import com.tangem.datasource.api.swap.LimitOrderApi
 import com.tangem.datasource.api.swap.OdosApi
 import com.tangem.datasource.api.swap.CoWSwapApi
+import com.tangem.datasource.api.swap.VeloraApi
 import com.tangem.datasource.api.swap.ThorchainApi
 import com.tangem.datasource.api.swap.ParaswapApi
 import com.tangem.datasource.api.markets.TangemTechMarketsApi
@@ -146,6 +147,20 @@ internal object NetworkModule {
     fun provideCoWSwapApi(retrofitApiBuilder: RetrofitApiBuilder): com.tangem.datasource.api.swap.CoWSwapApi {
         return retrofitApiBuilder.build(
             apiConfigId = ApiConfig.ID.CoWSwap,
+            applyTimeoutAnnotations = false,
+            timeouts = RetrofitApiBuilder.Timeouts(
+                callTimeoutSeconds = 30L,
+                connectTimeoutSeconds = 10L,
+                readTimeoutSeconds = 15L,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideVeloraApi(retrofitApiBuilder: RetrofitApiBuilder): com.tangem.datasource.api.swap.VeloraApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.Velora,
             applyTimeoutAnnotations = false,
             timeouts = RetrofitApiBuilder.Timeouts(
                 callTimeoutSeconds = 30L,
