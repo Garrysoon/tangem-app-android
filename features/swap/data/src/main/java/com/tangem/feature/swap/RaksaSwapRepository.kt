@@ -116,8 +116,8 @@ internal class RaksaSwapRepository @Inject constructor(
                     "across" -> fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
                     "lifi" -> ExpressDataError.UnknownError().left() // handled above
                     else -> {
-                        android.util.Log.d("RaksaSwap", "Provider=$providerId does not support cross-chain, falling back to thorchain")
-                        fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+                        android.util.Log.d("RaksaSwap", "Provider=$providerId does not support cross-chain")
+                        ExpressDataError.UnknownError().left()
                     }
                 }
             }
@@ -126,10 +126,12 @@ internal class RaksaSwapRepository @Inject constructor(
             val isUtxoFrom = fromNetwork.lowercase().contains("bitcoin") || fromNetwork.lowercase().contains("litecoin")
             val isUtxoTo = toNetwork.lowercase().contains("bitcoin") || toNetwork.lowercase().contains("litecoin")
             if (isUtxoFrom || isUtxoTo) {
-                if (providerId.lowercase() != "thorchain") {
-                    android.util.Log.d("RaksaSwap", "Provider=$providerId does not support UTXO, falling back to thorchain")
+                if (providerId.lowercase() == "thorchain") {
+                    return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
+                } else {
+                    android.util.Log.d("RaksaSwap", "Provider=$providerId does not support UTXO same-chain")
+                    return@withContext ExpressDataError.UnknownError().left()
                 }
-                return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
             }
             if (!DexTokenList.isChainSupported(fromNetwork)) return@withContext ExpressDataError.UnknownError().left()
             if (providerId.lowercase() == "across") return@withContext fetchAcrossQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
