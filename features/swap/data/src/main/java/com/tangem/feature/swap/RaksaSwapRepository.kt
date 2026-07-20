@@ -1,4 +1,4 @@
-﻿package com.tangem.feature.swap
+package com.tangem.feature.swap
 
 import arrow.core.Either
 import arrow.core.left
@@ -75,32 +75,7 @@ internal class RaksaSwapRepository @Inject constructor(
             val safeFromAddr = if (fromContractAddress.isBlank() || fromContractAddress == "0" || fromContractAddress == "0x") NATIVE else fromContractAddress
             val safeToAddr = if (toContractAddress.isBlank() || toContractAddress == "0" || toContractAddress == "0x") NATIVE else toContractAddress
 
-            // LI.FI meta-aggregator (same-chain + cross-chain)
-            if (providerId.lowercase() == "lifi") {
-                if (!fromAddress.isNullOrBlank()) {
-                    try {
-                        val liFiFromChain = normalizeChainId(fromNetwork)
-                        val liFiToChain = normalizeChainId(toNetwork)
-                        val isFromUtxo = liFiFromChain.lowercase().contains("bitcoin") || liFiFromChain.lowercase().contains("litecoin")
-                        val isToUtxo = liFiToChain.lowercase().contains("bitcoin") || liFiToChain.lowercase().contains("litecoin")
-                        val fromTokenAddr = if (safeFromAddr == NATIVE) { if (isFromUtxo) "0x0000000000000000000000000000000000000000" else "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE" } else safeFromAddr
-                        val toTokenAddr = if (safeToAddr == NATIVE) { if (isToUtxo) "0x0000000000000000000000000000000000000000" else "0xEeeeeEeeeEeEeeEeEeEeeEEEeEeeeeEeeeeEEeE" } else safeToAddr
-                        val resp = liFiApi.getQuote(fromChain = liFiFromChain, toChain = liFiToChain, fromToken = fromTokenAddr, toToken = toTokenAddr, fromAmount = fromAmount, fromAddress = fromAddress)
-                        val toAmountStr = resp.estimate?.toAmount
-                        if (toAmountStr != null) {
-                            return@withContext QuoteModel(toTokenAmount = SwapAmount(rawToAmount(toAmountStr, toDecimals), toDecimals), allowanceContract = resp.estimate?.approvalAddress, txType = ExpressTxType.SWAP, providerId = "lifi").right()
-                        }
-                    } catch (e: Exception) { android.util.Log.e("RaksaSwap", "Li.FI error: " + e.message) }
-                }
-                // LI.FI failed - for cross-chain fall through to thorchain, for same-chain return error
-                if (fromNetwork.lowercase() != toNetwork.lowercase()) {
-                    android.util.Log.d("RaksaSwap", "Li.FI failed for cross-chain, falling back to thorchain")
-                    return@withContext fetchThorchainQuote(safeFromAddr, fromNetwork, safeToAddr, toNetwork, fromAmount, fromDecimals, toDecimals)
-                }
-                return@withContext ExpressDataError.UnknownError().left()
-            }
-
-            // Cross-chain routing: only thorchain, across, lifi support cross-chain
+            // Cross-chain routing: only thorchain, across support cross-chain
             if (fromNetwork.lowercase() != toNetwork.lowercase()) {
                 return@withContext when (providerId.lowercase()) {
                     "thorchain" -> {
