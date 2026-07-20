@@ -1,4 +1,4 @@
-﻿package com.tangem.feature.swap.di
+package com.tangem.feature.swap.di
 
 import com.tangem.feature.swap.providers.DexProvider
 import com.tangem.feature.swap.providers.ParaswapDexProvider
@@ -22,5 +22,5 @@ object DexProviderModule {
     @Provides @IntoSet fun provideOdos(api: OdosApi): DexProvider = OdosDexProvider(api)
     @Provides @IntoSet fun provideVelora(api: VeloraApi): DexProvider = VeloraDexProvider(api)
     @Provides @IntoSet fun provideCoWSwap(api: CoWSwapApi): DexProvider = CoWSwapDexProvider(api)
-    @Provides @IntoSet fun provideLiFi(api: LiFiApi): DexProvider = LiFiDexProvider(api)
+    @Provides @IntoSet fun provideLiFi(api: LiFiApi, intentsApi: LiFiIntentsApi): DexProvider = LiFiDexProvider(api, intentsApi)
 }

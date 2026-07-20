@@ -173,4 +173,10 @@ internal object ApiConfigsModule {
     fun provideLiFiConfig(): ApiConfig {
         return LiFi()
     }
+
+    @Provides
+    @IntoSet
+    fun provideLiFiIntentsConfig(): ApiConfig {
+        return LiFiIntents()
+    }
 }

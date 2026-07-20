@@ -43,6 +43,7 @@ sealed class ApiConfig {
         CoWSwap,
         Velora,
         LiFi,
+        LiFiIntents,
     }
 
     private fun initializeId(): ID {
@@ -69,6 +70,7 @@ sealed class ApiConfig {
             is CoWSwap -> ID.CoWSwap
             is Velora -> ID.Velora
         is LiFi -> ID.LiFi
+        is LiFiIntents -> ID.LiFiIntents
         }
     }
 

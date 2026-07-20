@@ -187,6 +187,20 @@ internal object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideLiFiIntentsApi(retrofitApiBuilder: RetrofitApiBuilder): com.tangem.datasource.api.swap.LiFiIntentsApi {
+        return retrofitApiBuilder.build(
+            apiConfigId = ApiConfig.ID.LiFiIntents,
+            applyTimeoutAnnotations = false,
+            timeouts = RetrofitApiBuilder.Timeouts(
+                callTimeoutSeconds = 30L,
+                connectTimeoutSeconds = 10L,
+                readTimeoutSeconds = 15L,
+            ),
+        )
+    }
+
+    @Provides
+    @Singleton
     fun provideOdosApi(retrofitApiBuilder: RetrofitApiBuilder): com.tangem.datasource.api.swap.OdosApi {
         return retrofitApiBuilder.build(
             apiConfigId = ApiConfig.ID.Odos,
