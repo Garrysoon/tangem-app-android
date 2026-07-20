@@ -388,8 +388,19 @@ internal class SwapModel @Inject constructor(
                 isPaymentAccount = params.tangemPayInput != null,
             )
 
-            preselectedFromCurrency = fromSwapCurrencyStatus?.currency
-            preselectedToCurrency = toSwapCurrencyStatus?.currency
+            // Post-processing: if user entered from token detail and token ended up in TO,
+            // swap it to FROM
+            var finalFrom = fromSwapCurrencyStatus
+            var finalTo = toSwapCurrencyStatus
+            if (initialCryptoCurrency != null && finalTo != null && finalFrom != null &&
+                finalTo.currency.id == initialCryptoCurrency.id) {
+                // Token went to TO - swap FROM and TO
+                finalFrom = finalTo
+                finalTo = fromSwapCurrencyStatus
+            }
+
+            preselectedFromCurrency = finalFrom?.currency
+            preselectedToCurrency = finalTo?.currency
 
             analyticsEventHandler.send(
                 SwapEvents.SwapScreenOpened(
@@ -399,18 +410,18 @@ internal class SwapModel @Inject constructor(
             )
 
             dataState = dataState.copy(
-                fromSwapCurrencyStatus = fromSwapCurrencyStatus,
-                toSwapCurrencyStatus = toSwapCurrencyStatus,
+                fromSwapCurrencyStatus = finalFrom,
+                toSwapCurrencyStatus = finalTo,
             )
 
             selectWalletInSelector(
-                fromSwapCurrencyStatus = fromSwapCurrencyStatus,
-                toSwapCurrencyStatus = toSwapCurrencyStatus,
+                fromSwapCurrencyStatus = finalFrom,
+                toSwapCurrencyStatus = finalTo,
             )
             filterTokensFromSelector()
 
-            if (fromSwapCurrencyStatus != null) {
-                updateFeePaidCryptoCurrencyFor(fromSwapCurrencyStatus)
+            if (finalFrom != null) {
+                updateFeePaidCryptoCurrencyFor(finalFrom)
                 subscribeToCoinBalanceUpdatesIfNeeded()
             }
 
