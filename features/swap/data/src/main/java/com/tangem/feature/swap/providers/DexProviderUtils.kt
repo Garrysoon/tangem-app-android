@@ -52,10 +52,11 @@ internal fun forLifiToken(addr: String?, chain: String): String {
         val normalized = normalizeChain(chain)
         return when {
             "bitcoin" in normalized -> "bitcoin"
-            "tron" in normalized -> "trx"
+            "tron" in normalized -> "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb" // LI.FI native TRX address
             else -> ZERO_ADDR  // EVM native = 0x000...000 for LI.FI
         }
     }
+    // TRON tokens use base58 addresses (T prefix) - pass as-is
     return addr ?: ""
 }
 
