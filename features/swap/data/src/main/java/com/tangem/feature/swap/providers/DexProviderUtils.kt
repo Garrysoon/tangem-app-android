@@ -60,4 +60,10 @@ internal fun forLifiToken(addr: String?, chain: String): String {
     return addr ?: ""
 }
 
+
+internal fun lifiChainId(network: String): String {
+    val normalized = normalizeChain(network)
+    return LIFI_CHAIN_IDS[normalized] ?: (CHAIN_IDS[normalized]?.toString() ?: "1")
+}
+
 internal fun rawToAmount(raw: String, decimals: Int): BigDecimal = (raw.toBigDecimalOrNull() ?: BigDecimal.ZERO).movePointLeft(decimals)

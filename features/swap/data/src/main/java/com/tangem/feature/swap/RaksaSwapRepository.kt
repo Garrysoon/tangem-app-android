@@ -10,6 +10,8 @@ import com.tangem.datasource.api.swap.AcrossBridgeApi
 import com.tangem.datasource.api.swap.KyberSwapApi
 import com.tangem.datasource.api.swap.ParaswapApi
 import com.tangem.datasource.api.swap.ThorchainApi
+import com.tangem.feature.swap.providers.forLifiToken
+import com.tangem.feature.swap.providers.lifiChainId
 import com.tangem.datasource.api.swap.models.KyberBuildRequest
 import com.tangem.datasource.api.swap.models.ParaswapTxRequest
 import com.tangem.feature.swap.domain.api.SwapRepository
@@ -180,6 +182,10 @@ internal class RaksaSwapRepository @Inject constructor(
                     safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals,
                     fromNetwork, toNetwork, fromAddress, toAddress,
                 )
+                providerId.lowercase() == "lifi" -> buildLifiTx(
+                    safeFromAddr, safeToAddr, fromAmount, fromDecimals, toDecimals,
+                    fromNetwork, toNetwork, fromAddress, toAddress,
+                )
                 else -> ExpressDataError.UnknownError().left()
             }
         } catch (e: Exception) {
@@ -257,6 +263,58 @@ internal class RaksaSwapRepository @Inject constructor(
      * For cross-chain: send to THORChain vault on source chain
      * For same-chain: send to THORChain router on same chain
      */
+
+    private suspend fun buildLifiTx(
+        fromAddr: String, toAddr: String, amount: String,
+        fromDec: Int, toDec: Int,
+        fromNetwork: String, toNetwork: String,
+        fromAddress: String, toAddress: String,
+    ): Either<ExpressDataError, SwapDataModel> {
+        return try {
+            val fromToken = com.tangem.feature.swap.providers.forLifiToken(fromAddr, fromNetwork)
+            val toToken = com.tangem.feature.swap.providers.forLifiToken(toAddr, toNetwork)
+            val fromChain = com.tangem.feature.swap.providers.lifiChainId(fromNetwork)
+            val toChain = com.tangem.feature.swap.providers.lifiChainId(toNetwork)
+
+            android.util.Log.d("RaksaSwap", "Li.FI buildTx: $fromChain/$fromToken -> $toChain/$toToken amount=$amount")
+
+            val resp = liFiApi.getQuote(
+                fromChain = fromChain, toChain = toChain,
+                fromToken = fromToken, toToken = toToken,
+                fromAmount = amount, fromAddress = fromAddress,
+            )
+            val tx = resp.transactionRequest
+                ?: return ExpressDataError.UnknownError().left()
+            val est = resp.estimate
+                ?: return ExpressDataError.UnknownError().left()
+            val toAmountStr = est.toAmount ?: "0"
+            val toAmount = rawToAmount(toAmountStr, toDec)
+            val fromAmountVal = rawToAmount(amount, fromDec)
+
+            android.util.Log.d("RaksaSwap", "Li.FI buildTx: toAmount=$toAmount txTo=${tx.to}")
+
+            SwapDataModel(
+                toTokenAmount = SwapAmount(toAmount, toDec),
+                transaction = ExpressTransactionModel.DEX(
+                    fromAmount = SwapAmount(fromAmountVal, fromDec),
+                    toAmount = SwapAmount(toAmount, toDec),
+                    txValue = tx.value ?: "0",
+                    txId = "",
+                    txTo = tx.to ?: "",
+                    txExtraId = null,
+                    txFrom = fromAddress,
+                    txData = tx.data ?: "",
+                    otherNativeFeeWei = null,
+                    gas = tx.gasLimit?.toBigIntegerOrNull(),
+                    allowanceContract = est.approvalAddress,
+                ),
+            ).right()
+        } catch (e: Exception) {
+            android.util.Log.e("RaksaSwap", "Li.FI buildTx error: ${e.message}")
+            ExpressDataError.UnknownError().left()
+        }
+    }
+
     private suspend fun buildThorchainTx(
         fromAddr: String, fromChain: String, toAddr: String, toChain: String,
         amount: String, fromDec: Int, toDec: Int,
