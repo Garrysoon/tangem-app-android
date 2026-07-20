@@ -119,7 +119,7 @@ class LiFiDexProvider @Inject constructor(
             val resp = liFiIntentsApi.requestQuote(request)
             val quotes = resp.quotes
             if (quotes.isNullOrEmpty()) {
-                android.util.Log.d("LiFiDex", "tron: no quotes available")
+                android.util.Log.d("LiFiDex", "tron: no quotes available for $fromChainCaip/$fromAsset -> $toChainCaip/$toAsset")
                 return ExpressDataError.UnknownError().left()
             }
 
@@ -136,6 +136,7 @@ class LiFiDexProvider @Inject constructor(
                     providerId = providerId,
                 ).right()
             } else {
+                android.util.Log.d("LiFiDex", "tron: quote found but no output amount")
                 ExpressDataError.UnknownError().left()
             }
         } catch (e: Exception) {
