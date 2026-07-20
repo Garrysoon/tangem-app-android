@@ -13,7 +13,7 @@ object DexTokenList {
 
     /** Chains supported by Paraswap + KyberSwap DEXes */
 
-    val SUPPORTED_CHAINS = setOf("ethereum", "arbitrum", "optimism", "base", "polygon", "bsc")
+    val SUPPORTED_CHAINS = setOf("ethereum", "arbitrum", "optimism", "base", "polygon", "bsc", "tron", "bitcoin")
 
 
 
