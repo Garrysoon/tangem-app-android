@@ -1317,6 +1317,17 @@ internal class SwapModel @Inject constructor(
             selectedProvider = selectedSwapProvider,
             lastLoadedSwapStates = state,
         )
+
+        // Cache exchange rates for stablecoin auto-suggest
+        val fromId = dataState.fromSwapCurrencyStatus?.currency?.id?.value
+        val toId = dataState.toSwapCurrencyStatus?.currency?.id?.value
+        if (fromId != null && toId != null && selectedSwapProvider != null) {
+            val loadedState = state[selectedSwapProvider] as? SwapState.QuotesLoadedState
+            val destAmount = loadedState?.toTokenInfo?.tokenAmount?.value
+            if (destAmount != null && destAmount > java.math.BigDecimal.ZERO) {
+                StablecoinRateCache.cacheRate(fromId, toId, destAmount)
+            }
+        }
         if (selectedSwapProvider != null) {
             return nonEmptyStates.entries.first { entry -> entry.key == selectedSwapProvider }.toPair()
         }
