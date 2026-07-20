@@ -6,8 +6,6 @@ import com.tangem.utils.extensions.orZero
 
 object TokenPairSuggester {
 
-    private val UTXO_VIRTUAL_DEST_CHAIN = "ethereum"
-
     fun suggest(
         fromToken: SwapCurrencyStatus,
         availableTokens: List<SwapCurrencyStatus>,
@@ -15,23 +13,24 @@ object TokenPairSuggester {
     ): SwapCurrencyStatus? {
         if (alreadySelectedTo != null) return null
 
-        val fromRawId = fromToken.currency.network.rawId.lowercase()
-        val isUtxo = fromRawId.contains("bitcoin") || fromRawId.contains("litecoin")
-
-        val targetChain = if (isUtxo) UTXO_VIRTUAL_DEST_CHAIN else fromRawId
-
-        val candidates = availableTokens.filter {
-            it.currency.network.rawId.lowercase().let { chain ->
-                chain == targetChain || (isUtxo && chain.startsWith(targetChain))
-            } && it.isAvailableForSwap
-        }
-
-        return if (StablecoinDetector.isStablecoin(fromToken.currency)) {
-            candidates.filter { StablecoinDetector.isBtc(it.currency) }
-                .maxByOrNull { it.status.value.fiatAmount.orZero() }
-        } else {
-            candidates.filter { StablecoinDetector.isStablecoin(it.currency) }
+        // FROM is stablecoin -> suggest BTC with highest fiat balance
+        if (StablecoinDetector.isStablecoin(fromToken.currency)) {
+            return availableTokens
+                .filter { StablecoinDetector.isBtc(it.currency) && it.isAvailableForSwap }
                 .maxByOrNull { it.status.value.fiatAmount.orZero() }
         }
+
+        // FROM is not stablecoin -> best stablecoin from any chain
+        // Prefer same-chain, fallback to any chain
+        val sameChain = availableTokens.filter {
+            StablecoinDetector.isStablecoin(it.currency)
+            && it.currency.network.rawId.lowercase() == fromToken.currency.network.rawId.lowercase()
+            && it.isAvailableForSwap
+        }
+        val allChains = availableTokens.filter {
+            StablecoinDetector.isStablecoin(it.currency) && it.isAvailableForSwap
+        }
+        return sameChain.maxByOrNull { it.status.value.fiatAmount.orZero() }
+            ?: allChains.maxByOrNull { it.status.value.fiatAmount.orZero() }
     }
 }
