@@ -458,6 +458,17 @@ class SecurityOSCardReader : CardReader {
                     }
                     return PinVerifyResult.WrongPin(remaining)
                 }
+                // pysatochip format: 0x63Cx (lower 6 bits = tries, upper 2 bits = 0xC0)
+                in 0x63C0..0x63FF -> {
+                    val remaining = sw and 0x3F
+                    lastPinRemainingAttempts = remaining
+                    isPinBlocked = false
+                    Log.e(TAG, "verify PIN: WRONG PIN (pysatochip format)! Remaining attempts: $remaining/$PIN_MAX_TRIES")
+                    if (remaining == 1) {
+                        Log.e(TAG, "WARNING: Only 1 attempt left! Card will be LOCKED on next failure!")
+                    }
+                    return PinVerifyResult.WrongPin(remaining)
+                }
                 0x9C0C -> {
                     lastPinRemainingAttempts = 0
                     isPinBlocked = true

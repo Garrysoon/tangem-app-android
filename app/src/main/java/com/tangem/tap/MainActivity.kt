@@ -39,6 +39,7 @@ import com.tangem.core.ui.extensions.LocalUserInteractionTracker
 import com.tangem.core.ui.extensions.UserInteractionTracker
 import com.tangem.data.balancehiding.DefaultDeviceFlipDetector
 import com.tangem.data.card.sdk.CardSdkOwner
+import com.tangem.data.card.sdk.CardSdkProvider
 import com.tangem.domain.apptheme.model.AppThemeMode
 import com.tangem.domain.card.repository.CardRepository
 import com.tangem.domain.card.repository.CardSdkConfigRepository
@@ -95,6 +96,9 @@ class MainActivity : AppCompatActivity(), ActivityResultCallbackHolder {
     /** Router for opening tester menu */
     @Inject
     lateinit var cardSdkOwner: CardSdkOwner
+
+    @Inject
+    lateinit var cardSdkProvider: CardSdkProvider
 
     @Inject
     lateinit var cardSdkConfigRepository: CardSdkConfigRepository

@@ -30,6 +30,12 @@ class SecurityOSNfcManager : NfcAdapter.ReaderCallback, ReadingActiveListener, D
         set(value) {
             Log.d(TAG, "set readingIsActive $value")
             field = value
+            if (value && pendingTag != null) {
+                val tag = pendingTag
+                pendingTag = null
+                Log.d(TAG, "Session started with pending tag - auto-connecting")
+                reader.onTagDiscovered(tag)
+            }
         }
 
     val reader = SecurityOSCardReader()
@@ -42,6 +48,11 @@ class SecurityOSNfcManager : NfcAdapter.ReaderCallback, ReadingActiveListener, D
     var nfcAdapter: NfcAdapter? = null
         private set
     private var isReaderModeEnabled: Boolean = false
+
+    // Pending tag: card detected before session started
+    var pendingTag: Tag? = null
+        private set
+    var onCardDetectedBeforeSession: ((Tag) -> Unit)? = null
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -60,8 +71,9 @@ class SecurityOSNfcManager : NfcAdapter.ReaderCallback, ReadingActiveListener, D
         onTagDiscoveredListeners.forEach { it.invoke() }
         if (readingIsActive) {
             reader.onTagDiscovered(tag)
-        } else {
-            Log.d(TAG, "Tag discovered before session active — will be picked up on next poll")
+        } else if (tag != null) {
+            // Original Tangem SDK: ignore tag to prevent No support application dialog
+            ignoreTag(tag)
         }
     }
 
@@ -104,9 +116,12 @@ class SecurityOSNfcManager : NfcAdapter.ReaderCallback, ReadingActiveListener, D
 
     override fun onStop(owner: LifecycleOwner) {
         Log.d(TAG, "onStop")
-        disableReaderMode()
+        // Stop session but keep reader mode active
+        // Reader mode stays active so NFC tags are still caught by the system
+        // and forwarded to onTagDiscovered. This prevents "No support application" dialog.
         reader.stopSession(true)
         reader.listener = null
+        pendingTag = null
     }
 
     override fun onDestroy(owner: LifecycleOwner) {

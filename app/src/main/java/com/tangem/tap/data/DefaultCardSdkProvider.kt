@@ -49,6 +49,8 @@ internal class DefaultCardSdkProvider @Inject constructor(
 
     private val observer = Observer()
     private var holder: Holder? = null
+    var nfcManager: SecurityOSNfcManager? = null
+        private set
 
     override val sdk: TangemSdk
         get() = holder?.sdk ?: tryToRegisterWithForegroundActivity()
